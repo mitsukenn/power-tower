@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 このリポジトリは「パワータワー」（広告系タワーバトルゲーム）です。
 メインPC と 4thPC の 2 台から、Claude Code を使って交互にブラッシュアップしています。
@@ -21,4 +21,4 @@
 
 - `index.html` をブラウザで開く。`?lv=8` で任意レベルから開始できる。
 - スマホ幅（375px 前後）で崩れないことも確認する。
-- 公開URL: https://mitsukenn.github.io/power-tower/ （main に push すると GitHub Pages に反映）
+- 公開URL: https://machino-ai.jp/power-tower/ （main に push すると GitHub Pages に反映）
