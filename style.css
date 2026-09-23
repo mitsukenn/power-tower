@@ -943,3 +943,46 @@ html, body {
 .title-btns .big-btn:nth-child(3) { animation-delay: 1s; }
 @keyframes btnIn { from { transform: translateY(30px); opacity: 0; } }
 @keyframes pulse { 50% { transform: scale(1.05); } }
+
+/* ===== 移動ルール：行ける部屋・行けない部屋・橋 ===== */
+.floor.far { filter: brightness(.55) saturate(.7); cursor: not-allowed; }
+.floor.far .unit .sprite, .floor.far .unit .emoji { animation-play-state: paused; }
+.floor.open { animation: openGlow 1.6s ease-in-out infinite; }
+@keyframes openGlow {
+  50% { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .85), inset 0 8px 12px rgba(0, 0, 0, .35), 0 0 12px 2px rgba(255, 240, 160, .7); }
+}
+.floor.nope { animation: nope .35s; }
+@keyframes nope {
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+/* 隣の塔の同じ階どうしをつなぐ橋（両端に柱） */
+.bridge {
+  position: absolute;
+  z-index: 1;
+  height: 12px;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, #a8733f 0 9px, #7a4f26 9px 11px),
+    #8d5d30;
+  box-shadow: 0 3px 0 #4f3218, 0 5px 6px rgba(0, 0, 0, .35);
+  filter: brightness(.6) saturate(.6);
+  pointer-events: none;
+  transition: filter .3s;
+}
+.bridge::before, .bridge::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 6px;
+  height: 26px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(90deg, #8d5d30, #5e3c1c);
+}
+.bridge::before { left: -2px; }
+.bridge::after { right: -2px; }
+/* 通った橋は明るく */
+.bridge.used { filter: none; }
+.mm-dot.far { opacity: .35; }

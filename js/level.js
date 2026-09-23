@@ -22,6 +22,20 @@ function shuffle(arr, rnd) {
 
 const between = (rnd, [a, b]) => a + rnd() * (b - a);
 
+// ============================================================
+//  移動ルール：通ったエリア（スタート地点＋クリア済みのマス）に隣接するマスにだけ進める
+//  隣接 = 同じ塔の1つ上・1つ下の階、または隣の塔の同じ階（柱と橋でつながっている）
+//  スタート地点 'home' は 1本目の塔の1階 (0,0) とつながっている
+// ============================================================
+const cellKey = (t, f) => `${t},${f}`;
+const neighborsOf = (t, f) => [[t, f - 1], [t, f + 1], [t - 1, f], [t + 1, f]];
+
+// explored: 通ったエリアのキーの Set（'home' とクリア済みマスの cellKey）
+function isReachable(cell, explored) {
+  if (cell.t === 0 && cell.f === 0 && explored.has('home')) return true;
+  return neighborsOf(cell.t, cell.f).some(([t, f]) => explored.has(cellKey(t, f)));
+}
+
 // マスを1つ取ったあとのパワー。負ける（力尽きる）なら null
 function applyCell(power, cell) {
   switch (cell.type) {
@@ -99,21 +113,28 @@ function generateLevel(lv) {
     cell.look = list[Math.max(0, Math.min(list.length - 1, band + jitter))];
   });
 
-  // 4) ボスは最後の塔のてっぺん。ほかはシャッフルして配置
-  const boss = seq.pop();
-  boss.look = { img: IMG('bosses', worldOf(lv).boss), emoji: '🐉' };
-  shuffle(seq, rnd);
+  seq[total - 1].look = { img: IMG('bosses', worldOf(lv).boss), emoji: '🐉' };
 
-  const towers = [];
-  let k = 0, id = 0;
-  for (let t = 0; t < nTowers; t++) {
-    const floors = [];
-    for (let f = 0; f < nFloors; f++) {
-      const isBossSlot = t === nTowers - 1 && f === nFloors - 1;
-      floors.push({ ...(isBossSlot ? boss : seq[k++]), id: id++, cleared: false });
-    }
-    towers.push(floors);
+  // 4) 配置：スタートから「通ったエリアに隣接するマス」をランダムに1つずつ広げていった順に置く
+  //    → 正解の順番どおりに進めば、いつも隣のマスに行ける（必ずクリア可能）
+  //    ボスは最後の塔のてっぺんで、最後に到達するマス
+  const bossKey = cellKey(nTowers - 1, nFloors - 1);
+  const slots = [];
+  for (let t = 0; t < nTowers; t++) for (let f = 0; f < nFloors; f++) slots.push({ t, f });
+  const explored = new Set(['home']);
+  const towers = Array.from({ length: nTowers }, () => new Array(nFloors));
+  for (let i = 0; i < total; i++) {
+    const last = i === total - 1;
+    const frontier = slots.filter(s => {
+      const k = cellKey(s.t, s.f);
+      return !explored.has(k) && isReachable(s, explored) && (k !== bossKey || last);
+    });
+    const s = frontier[Math.floor(rnd() * frontier.length)];
+    explored.add(cellKey(s.t, s.f));
+    towers[s.t][s.f] = { ...seq[i], t: s.t, f: s.f, cleared: false };
   }
+  let id = 0;
+  towers.forEach(floors => floors.forEach(c => { c.id = id++; }));
   return { towers, nFloors, intended };
 }
 
@@ -126,7 +147,8 @@ function bestScore(cells, start, tries = 400) {
 }
 
 // 最高スコアと、そのときの「最初の1手」を返す（負けたときのヒントに使う）
-function bestPlan(cells, start, tries = 400) {
+// cells: まだ取っていないマス、explored0: 通ったエリア（省略時はスタート地点だけ）
+function bestPlan(cells, start, tries = 400, explored0 = null) {
   const rnd = makeRng(cells.length * 7919 + start);
   const basePri = c => {
     switch (c.type) {
@@ -143,9 +165,11 @@ function bestPlan(cells, start, tries = 400) {
     const pri = new Map(cells.map(c => [c, basePri(c) + rnd() * noise]));
     let p = start, firstPick = null;
     const left = cells.slice();
+    const explored = new Set(explored0 || ['home']);
     while (left.length) {
       let pick = -1, pickKey = Infinity;
       left.forEach((c, i) => {
+        if (!isReachable(c, explored)) return;                   // まだ行けない
         if (applyCell(p, c) === null) return;                    // 今は取れない
         const key = pri.get(c) + (c.value ? c.value / (p * 10) : 0);
         if (key < pickKey) { pickKey = key; pick = i; }
@@ -153,6 +177,7 @@ function bestPlan(cells, start, tries = 400) {
       if (pick < 0) { p = -1; break; }
       if (!firstPick) firstPick = left[pick];
       p = applyCell(p, left[pick]);
+      explored.add(cellKey(left[pick].t, left[pick].f));
       left.splice(pick, 1);
     }
     if (p > best) { best = p; first = firstPick; }

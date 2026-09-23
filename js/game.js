@@ -108,6 +108,7 @@ function startLevel(lv) {
 
   buildStage();
   layout();
+  buildBridges();
   buildDecor(lv);
   $('home').classList.remove('cleared');
   state.heroFloorEl = $('home');
@@ -139,6 +140,8 @@ function applyWorldLook(lv) {
 function buildStage() {
   const box = $('enemies');
   box.innerHTML = '';
+  state.cellByKey = new Map();
+  $('home').dataset.key = 'home';
   const towers = state.level.towers;
   const w = worldOf(state.lv);
   towers.forEach((floors, t) => {
@@ -149,7 +152,9 @@ function buildStage() {
       el.className = 'floor';
       el.appendChild(makeUnit(cell));
       el.addEventListener('click', () => onTap(cell, el));
+      el.dataset.key = cellKey(t, f);
       Object.assign(cell, { el, t, f });
+      state.cellByKey.set(el.dataset.key, cell);
       tower.appendChild(el);
     });
     if (t < towers.length - 1) {
@@ -411,10 +416,12 @@ function buildMinimap() {
 function updateMinimap() {
   const mm = $('minimap');
   const scale = +mm.dataset.scale || 0;
+  const explored = exploredSet();
   state.cells.forEach(c => {
     if (!c.dot) return;
     let kind = c.type === 'monster' ? (c.value < state.power ? 'weak' : 'strong') : c.type;
     if (c.boss) kind += ' boss';
+    if (!c.cleared && !isReachable(c, explored)) kind += ' far';
     c.dot.className = `mm-dot ${kind}${c.cleared ? ' cleared' : ''}`;
   });
   const hd = $('mm-hero');
@@ -469,7 +476,97 @@ function updatePower() {
     if (cell.type === 'monster') cell.unit.classList.toggle('weak', cell.value < state.power);
     if (cell.type === 'poison') cell.unit.classList.toggle('deadly', cell.value >= state.power);
   });
+  updateReach();
   updateMinimap();
+}
+
+// ============================================================
+//  移動ルール：通ったエリアのとなり（上下の階・橋でつながった隣の塔の同じ階）にだけ進める
+// ============================================================
+// 通ったエリア（スタート地点＋クリア済みのマス）。extra に移動中のマスを足せる
+function exploredSet(extra) {
+  const s = new Set(['home']);
+  state.cells.forEach(c => { if (c.cleared) s.add(cellKey(c.t, c.f)); });
+  if (extra) s.add(cellKey(extra.t, extra.f));
+  return s;
+}
+
+// 行けるマスは明るく、まだ行けないマスは暗く。通った橋は明るく
+function updateReach() {
+  const explored = exploredSet();
+  state.cells.forEach(c => {
+    const open = !c.cleared && isReachable(c, explored);
+    c.el.classList.toggle('open', open);
+    c.el.classList.toggle('far', !c.cleared && !open);
+  });
+  document.querySelectorAll('.bridge').forEach(b => {
+    b.classList.toggle('used', explored.has(b.dataset.a) && explored.has(b.dataset.b));
+  });
+}
+
+// 通ったエリアの中での隣接（'home' は 1本目の塔の1階とつながる）
+function nodeNeighbors(k) {
+  if (k === 'home') return ['0,0'];
+  const [t, f] = k.split(',').map(Number);
+  const list = neighborsOf(t, f).map(([a, b]) => cellKey(a, b));
+  if (t === 0 && f === 0) list.push('home');
+  return list;
+}
+const elOfKey = k => (k === 'home' ? $('home') : state.cellByKey.get(k).el);
+
+// ヒーローが今いる場所から、通ったエリアをたどって target の隣まで行く道（通過するマスの要素の配列）
+function heroPath(target) {
+  const explored = exploredSet();
+  const start = state.heroFloorEl.dataset.key;
+  const goal = cellKey(target.t, target.f);
+  const prev = new Map([[start, null]]);
+  const queue = [start];
+  while (queue.length) {
+    const k = queue.shift();
+    if (nodeNeighbors(k).includes(goal)) {
+      const path = [];
+      for (let x = k; x !== start; x = prev.get(x)) path.unshift(x);
+      return path.map(elOfKey);
+    }
+    nodeNeighbors(k).forEach(n => {
+      if (explored.has(n) && !prev.has(n)) { prev.set(n, k); queue.push(n); }
+    });
+  }
+  return [];
+}
+
+// 隣の塔の同じ階どうしを橋でつなぐ（スタート地点と1本目の塔の1階も）
+function buildBridges() {
+  const world = $('world');
+  world.querySelectorAll('.bridge').forEach(b => b.remove());
+  const towers = state.level.towers;
+  const depth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--depth')) || 0;
+  const add = (aKey, bKey, aEl, bEl) => {
+    const w = world.getBoundingClientRect();
+    const ra = aEl.getBoundingClientRect(), rb = bEl.getBoundingClientRect();
+    const left = ra.right - w.left + 6 + depth;
+    const br = document.createElement('div');
+    br.className = 'bridge';
+    br.dataset.a = aKey;
+    br.dataset.b = bKey;
+    br.style.left = left + 'px';
+    br.style.width = Math.max(8, rb.left - w.left - 6 - left) + 'px';
+    br.style.top = (ra.bottom - w.top - 12) + 'px';
+    world.appendChild(br);
+  };
+  add('home', '0,0', $('home'), towers[0][0].el);
+  for (let t = 0; t < towers.length - 1; t++) {
+    towers[t].forEach((c, f) => add(cellKey(t, f), cellKey(t + 1, f), c.el, towers[t + 1][f].el));
+  }
+}
+
+// まだ行けないマスをタップしたとき
+function rejectTap(floorEl) {
+  floorEl.classList.remove('nope');
+  void floorEl.offsetWidth;
+  floorEl.classList.add('nope');
+  Sound.sfx.deny();
+  showTip('🚧 まだ行けない！ <b>光っている部屋</b>（上下の階・橋の先）から進もう', 2200);
 }
 
 // ============================================================
@@ -729,9 +826,11 @@ function onTap(cell, floorEl) {
   if (state.justDragged || state.over || cell.cleared) return;
   if (state.introPlaying) { skipIntro(); return; }
   if (state.busy) {
-    if (state.moving) queueTap(cell, floorEl);
+    // 移動中のマスを取り終えたら行けるマスなら予約できる
+    if (state.moving && isReachable(cell, exploredSet(state.pendingCell))) queueTap(cell, floorEl);
     return;
   }
+  if (!isReachable(cell, exploredSet())) return rejectTap(floorEl);
   doTap(cell, floorEl);
 }
 
@@ -748,7 +847,7 @@ function clearQueue() {
 function runQueue() {
   const q = state.queued;
   clearQueue();
-  if (q && !q.cell.cleared && !state.over && !state.busy) doTap(q.cell, q.floorEl);
+  if (q && !q.cell.cleared && !state.over && !state.busy && isReachable(q.cell, exploredSet())) doTap(q.cell, q.floorEl);
 }
 
 async function doTap(cell, floorEl) {
@@ -756,11 +855,22 @@ async function doTap(cell, floorEl) {
   state.cells.forEach(c => c.el.classList.remove('hinted'));
   state.busy = true;
   state.moving = true;
+  state.pendingCell = cell;
   state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id, evolveIdx: state.evolveIdx });
 
-  // 遠くのマスほど移動に時間をかけ、カメラも一緒に追いかける
+  // 通ったエリアをたどって、目的のマスの隣まで歩く
   const hero = $('hero');
-  const from = worldPos(state.heroFloorEl), to = worldPos(floorEl);
+  const path = heroPath(cell);
+  const hopMs = path.length > 4 ? 90 : 140;
+  for (const el of path) {
+    hero.style.setProperty('--move-ms', sp(hopMs) + 'ms');
+    placeHero(el, false);
+    followFloor(el, hopMs);
+    await wait(hopMs);
+  }
+
+  // 最後のひと跳び。遠いほど時間をかけ、カメラも一緒に追いかける
+  const from = worldPos(path.length ? path[path.length - 1] : state.heroFloorEl), to = worldPos(floorEl);
   const moveMs = Math.round(Math.min(900, Math.max(CONFIG.moveMs, Math.hypot(to.x - from.x, to.y - from.y) * 1.1)));
   hero.style.setProperty('--move-ms', sp(moveMs) + 'ms');
   hero.classList.add('jump');
@@ -825,6 +935,7 @@ async function doTap(cell, floorEl) {
   state.moving = false;
   updateUndo();
 
+  state.pendingCell = null;
   if (state.cells.every(c => c.cleared)) { clearQueue(); return win(); }
   state.busy = false;
   runQueue();
@@ -952,6 +1063,7 @@ function describeCell(c) {
 
 async function lose(cell) {
   clearQueue();
+  state.pendingCell = null;
   const hero = $('hero');
   setHeroPose('damage');
   hero.classList.add('dying');
@@ -963,7 +1075,7 @@ async function lose(cell) {
   await wait(700);
 
   // 今の状態から勝てる手順を探して、最初の1手をヒントにする
-  const plan = bestPlan(state.cells.filter(c => !c.cleared), state.power, 250);
+  const plan = bestPlan(state.cells.filter(c => !c.cleared), state.power, 250, exploredSet());
   state.hintCell = plan.score > 0 ? plan.first : null;
   const hint = state.hintCell
     ? `<div class="hint-line">💡 ヒント：先に <b>${describeCell(state.hintCell)}</b> を取ろう</div>`
@@ -1003,7 +1115,8 @@ function hideTutorial() {
 function showGuides() {
   if (state.lv === 1 && !save.seen.tutorial) {
     // ヒーローにいちばん近い「倒せる敵」を指さす
-    const target = state.cells.filter(c => c.type === 'monster' && c.value < state.power)
+    const explored = exploredSet();
+    const target = state.cells.filter(c => c.type === 'monster' && c.value < state.power && isReachable(c, explored))
       .sort((a, b) => worldPos(a.el).x - worldPos(b.el).x || a.value - b.value)[0];
     if (target) {
       const hand = $('tutorial-hand');
@@ -1013,11 +1126,19 @@ function showGuides() {
       hand.style.top = p.y + 'px';
       hand.classList.remove('hidden');
       if (p.x > cam.x + cam.viewW - 40) setCamera(p.x - cam.viewW * 0.6, 400);   // 画面外なら見える位置へ
-      showTip('自分より<b class="weak-text">弱い敵（緑の数字）</b>をタップして吸収しよう！', 0);
+      showTip('自分より<b class="weak-text">弱い敵（緑の数字）</b>をタップして吸収しよう！<br>進めるのは<b>光っている部屋</b>（上下の階・橋の先）だけ', 0);
       save.seen.tutorial = true;
+      save.seen.rule = true;
       persist();
       return;
     }
+  }
+  // 以前から遊んでいる人向け：新しい移動ルールのお知らせ（1回だけ）
+  if (!save.seen.rule) {
+    save.seen.rule = true;
+    persist();
+    showTip('🌉 <b>新ルール</b>：通った場所のとなり（<b>上下の階</b>・<b>橋でつながった隣の塔</b>）にだけ進めるよ。光っている部屋がねらい目！', 7000);
+    return;
   }
   const tips = {
     double: '✨ <b>×2</b> はパワーが2倍！ <b>大きくなってから</b>取るほどお得',
@@ -1171,6 +1292,8 @@ function init() {
   window.addEventListener('resize', () => {
     if ($('app').dataset.screen !== 'game' || !state.level) return;
     layout();
+    buildBridges();
+    updateReach();
     placeHero(state.heroFloorEl, true);
     followFloor(state.heroFloorEl, 0);
     buildMinimap();
