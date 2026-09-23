@@ -4,7 +4,11 @@
 //  ユーティリティ
 // ============================================================
 const $ = id => document.getElementById(id);
-const wait = ms => new Promise(r => setTimeout(r, ms));
+
+// 速さ（▶▶ボタン）。演出の待ち時間・アニメーションの長さはすべて sp() で割る
+const spd = () => (typeof save !== 'undefined' && save.speed) || 1;
+const sp = ms => ms / spd();
+const wait = ms => new Promise(r => setTimeout(r, sp(ms)));
 
 // 大きな数字を短く表示（12345 → 12.3K, 4560000 → 4.56M）
 function fmt(n) {
@@ -86,6 +90,8 @@ function startLevel(lv) {
   state.over = false;
   state.evolveIdx = 0;
   state.combo = 0;
+  clearQueue();
+  state.hintCell = null;
 
   showScreen('game');
   $('level').textContent = lv;
@@ -94,6 +100,7 @@ function startLevel(lv) {
   hideTutorial();
   hideTip();
   setBackground(lv);
+  applyWorldLook(lv);
 
   const hero = $('hero');
   hero.classList.remove('dying', 'fight');
@@ -121,10 +128,19 @@ function setBackground(lv) {
   probe.src = src;
 }
 
+// 塔の壁・屋根・色をワールドに合わせる
+function applyWorldLook(lv) {
+  const w = worldOf(lv);
+  const world = $('world');
+  world.style.setProperty('--wall-img', `url("${IMG('stage', w.wall)}")`);
+  ['--stone-light', '--stone', '--stone-dark', '--stone-side'].forEach((v, i) => world.style.setProperty(v, w.tint[i]));
+}
+
 function buildStage() {
   const box = $('enemies');
   box.innerHTML = '';
   const towers = state.level.towers;
+  const w = worldOf(state.lv);
   towers.forEach((floors, t) => {
     const tower = document.createElement('div');
     tower.className = 'tower';
@@ -136,8 +152,16 @@ function buildStage() {
       Object.assign(cell, { el, t, f });
       tower.appendChild(el);
     });
-    // ボスの塔の上には、檻に入ったお姫様
-    if (t === towers.length - 1) {
+    if (t < towers.length - 1) {
+      // ふつうの塔には屋根
+      const roof = document.createElement('img');
+      roof.className = 'roof';
+      roof.src = IMG('stage', w.roof);
+      roof.alt = '';
+      roof.onerror = () => roof.remove();
+      tower.appendChild(roof);
+    } else {
+      // ボスの塔の上には、檻に入ったお姫様
       const cap = document.createElement('div');
       cap.className = 'captive';
       cap.id = 'captive';
@@ -165,10 +189,13 @@ function makeUnit(cell) {
     bomb: () => '÷2',
     poison: () => '−' + fmt(cell.value),
   };
-  const kind = { potion: 'item', double: 'item', bomb: 'trap', poison: 'trap' }[cell.type] || '';
+  const kind = { monster: 'mon', potion: 'item', double: 'item', bomb: 'trap', poison: 'trap' }[cell.type];
   const look = cell.type === 'monster' ? cell.look : CONFIG.items[cell.type];
-  u.className = ['unit', kind, cell.boss ? 'boss' : ''].join(' ').trim();
-  u.innerHTML = `${lookHtml(look)}<span class="val">${labels[cell.type]()}</span>`;
+  // ワールド最後のレベル（10, 20, …）のボスは特大
+  const mega = cell.boss && state.lv % LEVELS_PER_WORLD === 0 ? 'mega' : '';
+  u.className = ['unit', kind, cell.boss ? 'boss' : '', mega].join(' ').trim();
+  const hp = cell.boss ? '<div class="hpbar"><i></i></div>' : '';
+  u.innerHTML = `${hp}${lookHtml(look)}<span class="val">${labels[cell.type]()}</span>`;
   u.style.setProperty('--bob-delay', (-Math.random() * 1.8).toFixed(2) + 's');
   cell.unit = u;
   return u;
@@ -181,8 +208,10 @@ function layout() {
   if (!state.level) return;
   const stage = $('stage');
   const avail = stage.clientHeight - 34 - 130 - 20;   // 地面・HUD＋ミニマップ・上の余白を除いた高さ
-  const floorH = Math.max(44, Math.min(84, Math.floor(avail / state.level.nFloors) - 6));
-  const floorW = Math.max(60, Math.min(96, Math.round(floorH * 1.15)));
+  // 階数が少ない序盤はマスを大きくして、画面がスカスカに見えないようにする
+  const maxH = state.level.nFloors <= 2 ? 104 : 84;
+  const floorH = Math.max(44, Math.min(maxH, Math.floor(avail / state.level.nFloors) - 6));
+  const floorW = Math.max(60, Math.min(112, Math.round(floorH * 1.15)));
   const depth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--depth')) || 0;
   const root = document.documentElement.style;
   root.setProperty('--floor-w', floorW + 'px');
@@ -219,12 +248,14 @@ function measureWorld() {
   // 奥のレイヤーほど幅を狭くし、ゆっくり動かす
   $('bg-far').style.width = (cam.viewW + cam.max * CONFIG.parallaxFar) + 'px';
   $('bg-mid').style.width = (cam.viewW + cam.max * CONFIG.parallaxMid) + 'px';
+  $('fg').style.width = (cam.viewW + cam.max * CONFIG.parallaxFg) + 'px';
 }
 
 function setCamera(x, ms = 0) {
   cam.x = Math.max(0, Math.min(cam.max, x));
+  ms = ms && sp(ms);
   const t = ms ? `transform ${ms}ms cubic-bezier(.25,.8,.3,1)` : 'none';
-  [['world', 1], ['bg-mid', CONFIG.parallaxMid], ['bg-far', CONFIG.parallaxFar]].forEach(([id, k]) => {
+  [['world', 1], ['bg-mid', CONFIG.parallaxMid], ['bg-far', CONFIG.parallaxFar], ['fg', CONFIG.parallaxFg]].forEach(([id, k]) => {
     const el = $(id);
     el.style.transition = t;
     el.style.transform = `translateX(${-cam.x * k}px)`;
@@ -272,21 +303,51 @@ function buildDecor(lv) {
     else img.style.bottom = (26 + rnd() * 10) + 'px';
     box.appendChild(img);
   }
+
+  // 手前の飾り：小さめの岩や柵を地面すれすれに。ステージより速く流れて奥行きが出る
+  const fg = $('fg');
+  fg.innerHTML = '';
+  const fgKinds = worldOf(lv).fg;
+  const fgWidth = parseFloat(fg.style.width) || cam.viewW;
+  for (let x = rnd() * 120; x < fgWidth; x += 160 + rnd() * 220) {
+    const img = document.createElement('img');
+    const name = fgKinds[Math.floor(rnd() * fgKinds.length)];
+    img.className = 'decor ' + name;
+    img.src = IMG('stage', name);
+    img.alt = '';
+    img.onerror = () => img.remove();
+    img.style.width = (name === 'torch' ? 28 : 46 + rnd() * 30) + 'px';
+    img.style.left = x + 'px';
+    fg.appendChild(img);
+  }
 }
 
 // レベル開始演出：まずボスの塔（お姫様）を見せてから、ヒーローのところへカメラが戻る
+// 一度クリアしたレベルは短め。タップでスキップできる
 async function playIntro() {
   const token = ++state.introToken;
   if (cam.max <= 0) { setCamera(0); return true; }
+  const replay = !!save.stars[state.lv];
   state.busy = true;
+  state.introPlaying = true;
   setCamera(cam.max, 0);
-  await wait(800);
+  await wait(replay ? 300 : 800);
   if (token !== state.introToken) return false;
-  followFloor($('home'), CONFIG.introMs);
-  await wait(CONFIG.introMs);
+  const ms = replay ? 650 : CONFIG.introMs;
+  followFloor($('home'), ms);
+  await wait(ms);
   if (token !== state.introToken) return false;
+  state.introPlaying = false;
   state.busy = false;
   return true;
+}
+
+function skipIntro() {
+  state.introToken++;
+  state.introPlaying = false;
+  followFloor($('home'), 250);
+  state.busy = false;
+  showGuides();
 }
 
 // スワイプ・マウスドラッグ・ホイールでステージを見渡す
@@ -427,7 +488,7 @@ function fxBurst(src, floorEl, scale = 1, rotate = 0) {
   el.style.setProperty('--fx-rot', rotate + 'deg');
   el.onerror = () => el.remove();
   $('world').appendChild(el);
-  setTimeout(() => el.remove(), 700);
+  setTimeout(() => el.remove(), sp(700));
 }
 
 // style: '' / 'big'（大きな数字）/ 'crit'（CRITICAL!）/ 'combo'
@@ -439,7 +500,7 @@ function popText(text, floorEl, bad, style = '') {
   el.style.left = p.x + 'px';
   el.style.top = p.top + 'px';
   $('world').appendChild(el);
-  setTimeout(() => el.remove(), style ? 1100 : 800);
+  setTimeout(() => el.remove(), sp(style ? 1100 : 800));
 }
 
 // strength: 'small'（通常ヒット）/ 'big'（強敵・爆弾）
@@ -497,7 +558,7 @@ function sparks(p, count, colors, dist) {
     s.animate([
       { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
       { transform: `translate(calc(-50% + ${Math.cos(a) * d}px), calc(-50% + ${Math.sin(a) * d}px)) scale(.2)`, opacity: 0 },
-    ], { duration: rand(350, 650), easing: 'cubic-bezier(.15,.8,.3,1)' }).onfinish = () => s.remove();
+    ], { duration: sp(rand(350, 650)), easing: 'cubic-bezier(.15,.8,.3,1)' }).onfinish = () => s.remove();
   }
 }
 
@@ -520,7 +581,7 @@ function knockOut(cell, power) {
     { transform: 'translate(-50%, -50%) rotate(0) scale(1)', filter: 'brightness(4)' },
     { transform: 'translate(calc(-50% + 12px), calc(-50% - 16px)) rotate(25deg) scale(1.15)', filter: 'brightness(1.5)', offset: 0.12 },
     { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotate(${spin}deg) scale(.25)`, filter: 'brightness(1)', opacity: 0 },
-  ], { duration: 700, easing: 'cubic-bezier(.2,.7,.4,1)' }).onfinish = () => ghost.remove();
+  ], { duration: sp(700), easing: 'cubic-bezier(.2,.7,.4,1)' }).onfinish = () => ghost.remove();
 }
 
 // 倒した敵から光の玉がはじけ出て、ヒーローに吸い込まれる
@@ -542,7 +603,7 @@ function absorbOrbs(from, count) {
       { transform: 'translate(-50%, -50%) scale(.3)', opacity: 0 },
       { transform: `translate(calc(-50% + ${bx}px), calc(-50% + ${by}px)) scale(1.2)`, opacity: 1, offset: 0.35 },
       { transform: `translate(calc(-50% + ${to.x - from.x}px), calc(-50% + ${to.y - from.y}px)) scale(.4)`, opacity: .9 },
-    ], { duration: dur, easing: 'cubic-bezier(.5,0,.8,.6)' }).onfinish = () => {
+    ], { duration: sp(dur), easing: 'cubic-bezier(.5,0,.8,.6)' }).onfinish = () => {
       o.remove();
       Sound.sfx.absorb(i);
       hero.classList.remove('absorb');
@@ -557,18 +618,67 @@ function flashScreen() {
   const f = document.createElement('div');
   f.className = 'flash';
   $('stage').appendChild(f);
-  f.animate([{ opacity: 0.85 }, { opacity: 0 }], { duration: 280, easing: 'ease-out' }).onfinish = () => f.remove();
+  f.animate([{ opacity: 0.85 }, { opacity: 0 }], { duration: sp(280), easing: 'ease-out' }).onfinish = () => f.remove();
 }
 
 function zoomPunch(strength) {
   $('stage').animate([
     { transform: 'scale(1)' }, { transform: `scale(${1 + strength})` }, { transform: 'scale(1)' },
-  ], { duration: 320, easing: 'cubic-bezier(.2,.9,.3,1)' });
+  ], { duration: sp(320), easing: 'cubic-bezier(.2,.9,.3,1)' });
+}
+
+// ボスの HP ゲージ（残り回数 / 全体）
+function setBossHp(cell, left) {
+  const bar = cell.unit.querySelector('.hpbar i');
+  if (bar) bar.style.width = (left / CONFIG.bossHits * 100) + '%';
+}
+
+// ボスに近づいたとき：画面が暗くなって WARNING
+async function bossWarning(cell) {
+  const w = document.createElement('div');
+  w.className = 'warning';
+  w.innerHTML = '<span>WARNING</span><small>BOSS</small>';
+  $('stage').appendChild(w);
+  cell.unit.classList.add('enrage');
+  Sound.sfx.warning();
+  await wait(1000);
+  w.remove();
+  cell.unit.classList.remove('enrage');
+}
+
+// ボスは何回か斬って HP を削る（最後の一撃は killAnimation）
+async function bossStrikes(cell, floorEl) {
+  const hero = $('hero');
+  const center = worldPos(cell.unit.querySelector('.sprite, .emoji') || floorEl);
+  for (let hit = 1; hit < CONFIG.bossHits; hit++) {
+    setHeroPose('attack');
+    hero.classList.remove('lunge');
+    void hero.offsetWidth;
+    hero.classList.add('lunge');
+    Sound.sfx.whoosh();
+    await wait(110);
+    fxBurst(CONFIG.fx.slash, floorEl, 1.6, hit % 2 ? 25 : -35);
+    cell.unit.classList.add('hit', 'recoil');
+    shakeStage('small');
+    sparks(center, 14, ['#fff', '#ffe066', '#ff7a3b'], 80);
+    Sound.sfx.impact();
+    setBossHp(cell, CONFIG.bossHits - hit);
+    popText(`${hit}/${CONFIG.bossHits}`, floorEl, false, 'combo');
+    await wait(130);
+    cell.unit.classList.remove('hit');
+    hero.classList.remove('lunge');
+    await wait(260);
+    cell.unit.classList.remove('recoil');
+  }
 }
 
 async function killAnimation(cell, floorEl) {
   const hero = $('hero');
-  const big = cell.boss || cell.tough;         // 強敵・ボスは「クリティカル」演出
+  // 強敵・ボス、そして「ゲームで最初の1体」は派手なクリティカル演出
+  const first = !save.seen.firstKill;
+  const big = cell.boss || cell.tough || first;
+  if (first) { save.seen.firstKill = true; persist(); }
+  if (cell.boss) setBossHp(cell, 0);
   const center = worldPos(cell.unit.querySelector('.sprite, .emoji') || floorEl);
   state.combo = (state.combo || 0) + 1;
 
@@ -614,9 +724,36 @@ async function killAnimation(cell, floorEl) {
 // ============================================================
 //  タップ処理
 // ============================================================
-async function onTap(cell, floorEl) {
-  if (state.busy || state.over || cell.cleared || state.justDragged) return;
+// マスがタップされたとき：開始演出中ならスキップ、演出中なら「予約」しておく
+function onTap(cell, floorEl) {
+  if (state.justDragged || state.over || cell.cleared) return;
+  if (state.introPlaying) { skipIntro(); return; }
+  if (state.busy) {
+    if (state.moving) queueTap(cell, floorEl);
+    return;
+  }
+  doTap(cell, floorEl);
+}
+
+// 先行入力：演出が終わったらすぐ次のマスへ動けるように1つだけ予約できる
+function queueTap(cell, floorEl) {
+  clearQueue();
+  state.queued = { cell, floorEl };
+  floorEl.classList.add('queued');
+}
+function clearQueue() {
+  if (state.queued) state.queued.floorEl.classList.remove('queued');
+  state.queued = null;
+}
+function runQueue() {
+  const q = state.queued;
+  clearQueue();
+  if (q && !q.cell.cleared && !state.over && !state.busy) doTap(q.cell, q.floorEl);
+}
+
+async function doTap(cell, floorEl) {
   hideTutorial();
+  state.cells.forEach(c => c.el.classList.remove('hinted'));
   state.busy = true;
   state.moving = true;
   state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id, evolveIdx: state.evolveIdx });
@@ -625,7 +762,7 @@ async function onTap(cell, floorEl) {
   const hero = $('hero');
   const from = worldPos(state.heroFloorEl), to = worldPos(floorEl);
   const moveMs = Math.round(Math.min(900, Math.max(CONFIG.moveMs, Math.hypot(to.x - from.x, to.y - from.y) * 1.1)));
-  hero.style.setProperty('--move-ms', moveMs + 'ms');
+  hero.style.setProperty('--move-ms', sp(moveMs) + 'ms');
   hero.classList.add('jump');
   // 敵のときは手前で止まって斬りかかる
   const standOff = cell.type === 'monster' ? -floorEl.offsetWidth * 0.42 : 0;
@@ -638,6 +775,7 @@ async function onTap(cell, floorEl) {
   const after = applyCell(state.power, cell);
 
   if (cell.type === 'monster') {
+    if (cell.boss) await bossWarning(cell);
     if (after === null) {
       hero.classList.add('fight');
       setHeroPose('attack');
@@ -646,6 +784,7 @@ async function onTap(cell, floorEl) {
       state.combo = 0;
       return lose(cell);
     }
+    if (cell.boss) await bossStrikes(cell, floorEl);
     await killAnimation(cell, floorEl);
   } else if (cell.type === 'poison') {
     state.combo = 0;
@@ -670,7 +809,7 @@ async function onTap(cell, floorEl) {
   hero.classList.add('grow');
   if (standOff) {
     // 敵がいなくなったマスの中央へ一歩進む
-    hero.style.setProperty('--move-ms', '160ms');
+    hero.style.setProperty('--move-ms', sp(160) + 'ms');
     placeHero(floorEl, false);
     await wait(160);
   } else {
@@ -686,8 +825,9 @@ async function onTap(cell, floorEl) {
   state.moving = false;
   updateUndo();
 
-  if (state.cells.every(c => c.cleared)) return win();
+  if (state.cells.every(c => c.cleared)) { clearQueue(); return win(); }
   state.busy = false;
+  runQueue();
 }
 
 // ============================================================
@@ -723,7 +863,14 @@ function undo() {
   setHeroPose('idle');
   updatePower();
   updateUndo();
+  clearQueue();
   Sound.sfx.undo();
+  // 負けた直後の「1手戻す」なら、ヒントのマスを光らせる
+  if (state.hintCell && !state.hintCell.cleared) {
+    state.hintCell.el.classList.add('hinted');
+    followFloor(state.hintCell.el, 400);
+  }
+  state.hintCell = null;
 }
 
 // ============================================================
@@ -791,7 +938,20 @@ async function win() {
   countUp($('final-power'), state.power, 900);
 }
 
+// ヒント用にマスを言葉で説明する
+function describeCell(c) {
+  switch (c.type) {
+    case 'monster': return `「${fmt(c.value)}」の敵`;
+    case 'potion': return `回復薬（+${fmt(c.value)}）`;
+    case 'double': return '✨×2';
+    case 'bomb': return '💣爆弾';
+    case 'poison': return `☠毒（−${fmt(c.value)}）`;
+  }
+  return '';
+}
+
 async function lose(cell) {
+  clearQueue();
   const hero = $('hero');
   setHeroPose('damage');
   hero.classList.add('dying');
@@ -802,10 +962,15 @@ async function lose(cell) {
   updateUndo();
   await wait(700);
 
-  const body = cell.type === 'poison'
-    ? '毒で力尽きた…<br><span class="sub-line">☠ は強くなってから取ろう</span>'
-    : `あと <b class="need">${fmt(cell.value - state.power + 1)}</b> パワーで勝てた！<br>
-       <span class="sub-line">数字が<span class="weak-text">緑</span>の敵から倒そう。順番がカギ！</span>`;
+  // 今の状態から勝てる手順を探して、最初の1手をヒントにする
+  const plan = bestPlan(state.cells.filter(c => !c.cleared), state.power, 250);
+  state.hintCell = plan.score > 0 ? plan.first : null;
+  const hint = state.hintCell
+    ? `<div class="hint-line">💡 ヒント：先に <b>${describeCell(state.hintCell)}</b> を取ろう</div>`
+    : '<div class="hint-line">💡 この流れからは勝てない…もっと前に戻るか、最初からやり直そう</div>';
+  const body = (cell.type === 'poison'
+    ? '毒で力尽きた…'
+    : `あと <b class="need">${fmt(cell.value - state.power + 1)}</b> パワーで勝てた！`) + hint;
   showOverlay({
     title: 'おしい！',
     body,
@@ -837,8 +1002,9 @@ function hideTutorial() {
 // レベル開始時：初めて出てくる仕掛けの説明、Lv1 は指さしチュートリアル
 function showGuides() {
   if (state.lv === 1 && !save.seen.tutorial) {
+    // ヒーローにいちばん近い「倒せる敵」を指さす
     const target = state.cells.filter(c => c.type === 'monster' && c.value < state.power)
-      .sort((a, b) => a.value - b.value)[0];
+      .sort((a, b) => worldPos(a.el).x - worldPos(b.el).x || a.value - b.value)[0];
     if (target) {
       const hand = $('tutorial-hand');
       $('world').appendChild(hand);
@@ -846,6 +1012,7 @@ function showGuides() {
       hand.style.left = p.x + 'px';
       hand.style.top = p.y + 'px';
       hand.classList.remove('hidden');
+      if (p.x > cam.x + cam.viewW - 40) setCamera(p.x - cam.viewW * 0.6, 400);   // 画面外なら見える位置へ
       showTip('自分より<b class="weak-text">弱い敵（緑の数字）</b>をタップして吸収しよう！', 0);
       save.seen.tutorial = true;
       persist();
@@ -875,7 +1042,8 @@ function showGuides() {
 //  タイトル・ステージ選択・ショップ
 // ============================================================
 function renderTitle() {
-  $('start-btn').textContent = `▶ つづきから Lv ${save.unlocked}`;
+  const fresh = !Object.keys(save.stars).length;
+  $('start-btn').textContent = fresh ? '▶ はじめる' : `▶ つづきから Lv ${save.unlocked}`;
   $('title-coins').textContent = fmt(save.coins);
 }
 
@@ -952,6 +1120,16 @@ function renderShop() {
   $('app').dataset.screen = 'shop';
 }
 
+// 速さ切り替え（▶ = 通常、▶▶ = 2倍速）。CSS のアニメーションにも --spd で反映
+function setSpeed(s) {
+  save.speed = s;
+  persist();
+  document.documentElement.style.setProperty('--spd', 1 / s);
+  const btn = $('speed-btn');
+  btn.textContent = s > 1 ? '▶▶' : '▶';
+  btn.classList.toggle('on', s > 1);
+}
+
 function setMuted(m) {
   save.muted = m;
   persist();
@@ -965,6 +1143,12 @@ function setMuted(m) {
 function init() {
   setupCameraControls();
   setMuted(save.muted);
+  setSpeed(save.speed || 1);
+  $('speed-btn').onclick = () => {
+    const list = CONFIG.speeds;
+    setSpeed(list[(list.indexOf(save.speed || 1) + 1) % list.length]);
+    Sound.sfx.click();
+  };
 
   // 最初のタップで BGM を開始（ブラウザの自動再生制限のため）
   window.addEventListener('pointerdown', () => Sound.startBgm(), { once: true });

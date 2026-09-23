@@ -13,8 +13,13 @@ const CONFIG = {
   undoPerLevel: 3,         // 1レベルで「1手戻す」を使える回数（ショップで増やせる）
 
   // ---- ステージの広さ ----
-  towers: lv => Math.min(2 + Math.floor(lv / 3), 7),
+  // 序盤（Lv1〜3）は低い塔を3本並べて画面を埋める
+  towers: lv => (lv <= 3 ? 3 : Math.min(2 + Math.floor(lv / 3), 7)),
   floorsPerTower: lv => Math.min(2 + Math.floor(lv / 4), 5),
+
+  // ---- テンポ ----
+  speeds: [1, 2],          // ▶▶ ボタンで切り替える速さ
+  bossHits: 3,             // ボスは何回斬って倒すか（演出。勝ち負けの判定は他の敵と同じ）
 
   // ---- 敵の強さ（その時点のパワーに対する割合） ----
   // ほとんどは弱め、ときどき「ギリギリの強敵」が混ざる → 数字が増えすぎず、競り合いが生まれる
@@ -44,6 +49,7 @@ const CONFIG = {
   cameraLead: 0.38,        // ヒーローを画面の左から何割の位置に映すか
   parallaxFar: 0.15,       // 遠景（背景画像）の動く速さ（1 = ステージと同じ）
   parallaxMid: 0.5,        // 中景（雲・木など）の動く速さ
+  parallaxFg: 1.3,         // 手前の飾り（岩・柵）の動く速さ（1より大きい = ステージより速い）
   introMs: 1400,           // レベル開始時、ボスからヒーローへカメラが戻る時間
 
   // ---- ショップ ----
@@ -91,9 +97,13 @@ const CONFIG = {
 // ============================================================
 //  ワールド（10レベルごとに景色・飾り・ボスが変わる）
 // ============================================================
+// wall: 塔の壁の模様（img/stage）、roof: 塔の屋根、tint: 塔の側面・上面の色 [明るい, 普通, 暗い, 側面]
+// fg: 手前の飾り（ステージより速く動いて奥行きを出す）
 const WORLDS = [
   {
     name: 'はじまりの草原', boss: 'giant_golem',
+    wall: 'wall_stone', roof: 'roof_red', tint: ['#b3a288', '#8a7a66', '#5e5245', '#4a3f33'],
+    fg: ['rock', 'fence'],
     backgrounds: ['meadow_castle', 'sunset_castle', 'forest'],
     decor: [
       { name: 'cloud', size: [90, 150], sky: true }, { name: 'cloud', size: [70, 120], sky: true },
@@ -102,6 +112,8 @@ const WORLDS = [
   },
   {
     name: '砂の国と南の海', boss: 'kraken',
+    wall: 'wall_wood', roof: 'roof_red', tint: ['#c99a62', '#a0703f', '#6e4a27', '#553820'],
+    fg: ['rock', 'fence'],
     backgrounds: ['desert', 'beach'],
     decor: [
       { name: 'cloud', size: [80, 130], sky: true }, { name: 'rock', size: [50, 90] },
@@ -110,6 +122,8 @@ const WORLDS = [
   },
   {
     name: '氷の国と天空', boss: 'dragon',
+    wall: 'wall_ice', roof: 'roof_blue', tint: ['#bfe6ff', '#7fbfe6', '#4d8bb8', '#3a6d93'],
+    fg: ['rock'],
     backgrounds: ['snow', 'sky'],
     decor: [
       { name: 'cloud', size: [100, 160], sky: true }, { name: 'cloud', size: [80, 130], sky: true },
@@ -118,6 +132,8 @@ const WORLDS = [
   },
   {
     name: '地底と火山', boss: 'dragon',
+    wall: 'wall_lava', roof: 'roof_red', tint: ['#7a5a52', '#553a34', '#3a2522', '#2a1a18'],
+    fg: ['rock'],
     backgrounds: ['cave', 'volcano'],
     decor: [
       { name: 'rock', size: [50, 90] }, { name: 'rock', size: [40, 70] }, { name: 'torch', size: [30, 44] },
@@ -125,6 +141,8 @@ const WORLDS = [
   },
   {
     name: '魔王の城', boss: 'demon_king',
+    wall: 'wall_stone', roof: 'roof_blue', tint: ['#8a7fa0', '#5f5578', '#3e3654', '#2d2640'],
+    fg: ['rock', 'torch'],
     backgrounds: ['night_castle', 'demon_castle'],
     decor: [
       { name: 'torch', size: [30, 44] }, { name: 'castle_wall', size: [90, 130] }, { name: 'rock', size: [50, 80] },

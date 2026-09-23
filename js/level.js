@@ -122,6 +122,11 @@ function generateLevel(lv) {
 //  「💣は早め・弱い敵から・×2と☠は後回し」を基本に、少しずつ順番を崩した手順を何百通りか試す
 // ============================================================
 function bestScore(cells, start, tries = 400) {
+  return bestPlan(cells, start, tries).score;
+}
+
+// 最高スコアと、そのときの「最初の1手」を返す（負けたときのヒントに使う）
+function bestPlan(cells, start, tries = 400) {
   const rnd = makeRng(cells.length * 7919 + start);
   const basePri = c => {
     switch (c.type) {
@@ -132,11 +137,11 @@ function bestScore(cells, start, tries = 400) {
     }
     return 3;
   };
-  let best = -1;
+  let best = -1, first = null;
   for (let t = 0; t < tries; t++) {
     const noise = t === 0 ? 0 : rnd() * 3;
     const pri = new Map(cells.map(c => [c, basePri(c) + rnd() * noise]));
-    let p = start;
+    let p = start, firstPick = null;
     const left = cells.slice();
     while (left.length) {
       let pick = -1, pickKey = Infinity;
@@ -146,12 +151,13 @@ function bestScore(cells, start, tries = 400) {
         if (key < pickKey) { pickKey = key; pick = i; }
       });
       if (pick < 0) { p = -1; break; }
+      if (!firstPick) firstPick = left[pick];
       p = applyCell(p, left[pick]);
       left.splice(pick, 1);
     }
-    best = Math.max(best, p);
+    if (p > best) { best = p; first = firstPick; }
   }
-  return best;
+  return { score: best, first };
 }
 
 // ★の数（クリアしていれば最低1）

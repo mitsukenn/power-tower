@@ -255,6 +255,23 @@ html, body {
     linear-gradient(90deg, var(--stone-light), var(--stone) 55%, var(--stone-dark));
   box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .25);
 }
+/* 敵の塔はワールドごとの壁の模様（石・木・氷・溶岩）＋左右の陰影で立体感 */
+.tower {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, .18), transparent 35%, rgba(0, 0, 0, .35)),
+    var(--wall-img, none) center / calc(var(--floor-w) * .5) repeat,
+    var(--stone);
+}
+/* 塔の屋根 */
+.roof {
+  position: absolute;
+  bottom: calc(100% + var(--depth) - 10px);
+  left: 50%;
+  width: calc(var(--floor-w) * 1.2);
+  transform: translateX(-46%);
+  pointer-events: none;
+  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, .3));
+}
 /* 右側面 */
 .home-tower::after,
 .tower::after {
@@ -277,7 +294,7 @@ html, body {
   left: 0;
   width: 100%;
   height: var(--depth);
-  background: linear-gradient(#cdbd9f, var(--stone-light));
+  background: linear-gradient(color-mix(in srgb, var(--stone-light) 75%, #fff), var(--stone-light));
   transform-origin: 0 100%;
   transform: skewX(-45deg);
 }
@@ -378,7 +395,7 @@ html, body {
 .unit.item .val { background: linear-gradient(#ffe066, var(--gold)); color: #3b2a00; box-shadow: 0 2px 0 #9a7200, inset 0 1px 0 rgba(255, 255, 255, .6); text-shadow: none; }
 .unit.trap .val { background: linear-gradient(#b77cff, #7a3bd1); box-shadow: 0 2px 0 #45207a, inset 0 1px 0 rgba(255, 255, 255, .4); }
 .unit.trap.deadly .val { background: linear-gradient(#ff5a5a, var(--strong)); box-shadow: 0 2px 0 #8a1414; }
-.unit.dying { animation: die .35s forwards; }
+.unit.dying { animation: die calc(.35s * var(--spd, 1)) forwards; }
 
 /* ボスの塔の上：檻に入ったお姫様 */
 .captive {
@@ -405,7 +422,7 @@ html, body {
 }
 
 /* 💣 で画面が揺れる */
-#stage.shake #world { animation: stageShake .4s; }
+#stage.shake #world { animation: stageShake calc(.4s * var(--spd, 1)); }
 @keyframes stageShake {
   20% { margin-left: -10px; margin-top: 4px; }
   40% { margin-left: 8px; margin-top: -4px; }
@@ -437,7 +454,7 @@ html, body {
   object-fit: contain;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  animation: fxPop .6s ease-out forwards;
+  animation: fxPop calc(.6s * var(--spd, 1)) ease-out forwards;
 }
 @keyframes fxPop {
   0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--fx-rot, 0deg)) scale(calc(var(--fx-scale, 1) * .3)); }
@@ -475,20 +492,20 @@ html, body {
 .flash { position: absolute; inset: 0; z-index: 15; background: #fff; pointer-events: none; }
 
 /* ヒーローの踏み込み・吸収 */
-.hero.lunge .sprite, .hero.lunge .emoji { animation: lunge .22s ease-out forwards; }
+.hero.lunge .sprite, .hero.lunge .emoji { animation: lunge calc(.22s * var(--spd, 1)) ease-out forwards; }
 @keyframes lunge {
   0% { transform: translateX(0) rotate(0) scale(1); }
   40% { transform: translateX(-8px) rotate(-8deg) scale(1.05); }
   100% { transform: translateX(22px) rotate(10deg) scale(1.15); }
 }
-.hero.absorb .sprite, .hero.absorb .emoji { animation: absorbGlow .25s ease-out; }
+.hero.absorb .sprite, .hero.absorb .emoji { animation: absorbGlow calc(.25s * var(--spd, 1)) ease-out; }
 @keyframes absorbGlow {
   0% { filter: brightness(1.8) drop-shadow(0 0 10px #7fe0ff); transform: scale(1.12); }
   100% { filter: none; transform: scale(1); }
 }
 
 /* 通常ヒットの小さな揺れ */
-#stage.shake-small #world { animation: stageShakeSmall .18s; }
+#stage.shake-small #world { animation: stageShakeSmall calc(.18s * var(--spd, 1)); }
 @keyframes stageShakeSmall {
   33% { margin-left: -4px; margin-top: 2px; }
   66% { margin-left: 3px; margin-top: -1px; }
@@ -503,7 +520,7 @@ html, body {
   color: #fff6c2;
   text-shadow: 0 1px 0 #c98a00, 0 2px 0 #b07800, 0 3px 0 #8f6200, 0 5px 6px rgba(0, 0, 0, .45);
   pointer-events: none;
-  animation: pop .8s forwards;
+  animation: pop calc(.8s * var(--spd, 1)) forwards;
 }
 .pop.bad {
   color: #ffe0e0;
@@ -513,7 +530,7 @@ html, body {
 .pop.crit, .pop.combo {
   z-index: 13;
   white-space: nowrap;
-  animation: popStamp 1.1s forwards;
+  animation: popStamp calc(1.1s * var(--spd, 1)) forwards;
 }
 .pop.crit {
   font-size: 34px;
@@ -809,3 +826,120 @@ html, body {
 .buy-btn img { width: 22px; }
 .buy-btn:disabled { filter: grayscale(1); opacity: .6; cursor: default; }
 .shop-note { font-size: 13px; text-align: center; padding: 0 16px; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+
+/* ===== 手前の飾り（ステージより速く動く） ===== */
+.fg { z-index: 4; }
+.fg .decor {
+  position: absolute;
+  bottom: -6px;
+  object-fit: contain;
+  filter: brightness(.8) drop-shadow(0 4px 4px rgba(0, 0, 0, .35));
+}
+
+/* ===== 速さボタン ===== */
+#speed-btn { font-size: 15px; letter-spacing: -3px; }
+#speed-btn.on { background: linear-gradient(#ffd23f, #e39b00); box-shadow: 0 4px 0 #8f6200; }
+
+/* ===== 先行入力・ヒント ===== */
+.floor.queued { box-shadow: inset 0 0 0 3px #5b9bff, inset 0 8px 12px rgba(0, 0, 0, .45); }
+.floor.hinted { animation: hintPulse 1s ease-in-out infinite; }
+@keyframes hintPulse {
+  50% { box-shadow: inset 0 0 0 4px #ffd23f, 0 0 18px 6px rgba(255, 210, 63, .9); }
+}
+.hint-line {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff7d6;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.hint-line b { font-size: 16px; color: #b35c00; }
+
+/* ===== 色だけに頼らない表示：勝てる敵は ⚔、勝てない敵は 🔒 ===== */
+.unit.mon .val::before { content: '🔒'; font-size: .75em; margin-right: 2px; }
+.unit.mon.weak .val::before { content: '⚔'; }
+.unit.trap.deadly .val::before { content: '⚠'; font-size: .8em; margin-right: 2px; }
+
+/* ===== ボス ===== */
+.hpbar {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  z-index: 2;
+  width: 90%;
+  height: 8px;
+  transform: translateX(-50%);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, .55);
+  box-shadow: 0 0 0 1.5px #fff;
+  overflow: hidden;
+}
+.hpbar i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(#ff7a7a, #d62d2d);
+  transition: width calc(.3s * var(--spd, 1)) ease-out;
+}
+.unit.boss .sprite { filter: drop-shadow(0 0 6px rgba(255, 60, 60, .7)) drop-shadow(0 4px 3px rgba(0, 0, 0, .4)); }
+.unit.mega .sprite { transform-origin: 50% 100%; scale: 1.35; }
+.unit.mega .hpbar { top: -30px; }
+.unit.enrage .sprite { animation: enrage .25s ease-in-out infinite !important; }
+@keyframes enrage {
+  50% { transform: scale(1.12); filter: drop-shadow(0 0 14px #ff2020) brightness(1.2); }
+}
+.unit.recoil .sprite { animation: recoil calc(.3s * var(--spd, 1)) ease-out !important; }
+@keyframes recoil {
+  30% { transform: translateX(12px) rotate(8deg); }
+}
+.warning {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(transparent 30%, rgba(120, 0, 0, .55));
+  pointer-events: none;
+  animation: warnFade calc(1s * var(--spd, 1)) forwards;
+}
+.warning span {
+  padding: 6px 0;
+  width: 100%;
+  text-align: center;
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: .15em;
+  color: #fff;
+  background: repeating-linear-gradient(-45deg, rgba(200, 0, 0, .85) 0 14px, rgba(40, 0, 0, .85) 14px 28px);
+  text-shadow: 0 0 10px #ff2020, 0 3px 0 #700;
+  animation: warnBlink calc(.25s * var(--spd, 1)) steps(2) infinite;
+}
+.warning small { margin-top: 6px; font-size: 18px; font-weight: 900; color: #ffd0d0; letter-spacing: .4em; }
+@keyframes warnBlink { 50% { opacity: .55; } }
+@keyframes warnFade {
+  0% { opacity: 0; }
+  15%, 80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ===== タイトルのロゴ登場 ===== */
+.logo { animation: logoDrop .9s cubic-bezier(.3, 1.6, .5, 1) both, logoFloat 3s ease-in-out .9s infinite; }
+@keyframes logoDrop {
+  0% { transform: translateY(-120%) rotate(-4deg) scale(1.6); opacity: 0; }
+  60% { opacity: 1; }
+  100% { transform: translateY(0) rotate(-4deg) scale(1); }
+}
+@keyframes logoFloat {
+  50% { transform: translateY(-6px) rotate(-3deg); }
+}
+.title-hero { animation: heroPop .7s .5s cubic-bezier(.3, 1.6, .5, 1) both, bob 1.8s ease-in-out 1.2s infinite; }
+@keyframes heroPop { from { transform: scale(0); opacity: 0; } }
+.title-btns .big-btn { animation: btnIn .5s both; }
+.title-btns .big-btn:nth-child(1) { animation: btnIn .5s .8s both, pulse 1.4s ease-in-out 1.4s infinite; }
+.title-btns .big-btn:nth-child(2) { animation-delay: .9s; }
+.title-btns .big-btn:nth-child(3) { animation-delay: 1s; }
+@keyframes btnIn { from { transform: translateY(30px); opacity: 0; } }
+@keyframes pulse { 50% { transform: scale(1.05); } }

@@ -64,6 +64,7 @@ const Sound = (() => {
       tone(60, 400, 'sine', 0.25);
       [880, 1175, 1568].forEach((f, i) => tone(f, 160, 'square', 0.04, 0.05 + i * 0.05));
     },
+    warning: () => [0, 0.25, 0.5].forEach(at => { tone(440, 180, 'sawtooth', 0.05, at); tone(330, 180, 'sawtooth', 0.05, at + 0.12); }),
     absorb: i => tone(900 + i * 110, 70, 'sine', 0.05),
     combo: n => [0, 4, 7].forEach((s, i) => tone(523 * Math.pow(2, (s + n) / 12), 90, 'triangle', 0.05, i * 0.05)),
     jump: () => tone(440, 60, 'triangle'),
