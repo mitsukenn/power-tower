@@ -87,29 +87,45 @@ function takeCell(power, cell, byKey, edges) {
 
 // ============================================================
 //  レベル生成
-//  1) スタートから部屋を1つずつ広げて迷路（木構造）を作る。広げた順が「正解の順番」
-//  2) ときどき近道（橋・はしご）を足す。序盤は全部つながっている
-//  3) 💣・☠ はボスへの一本道に優先して置く → 通らないとボスに届かない場面が生まれる
+//  1) 通路：塔の中は全部はしごでつながる。塔と塔の間は決まった階にだけ橋（同じ階どうし）
+//  2) スタートから通路にそって部屋を1つずつ広げる。広げた順が「正解の順番」（ボスは最後）
+//  3) 💣・☠ はボスへの道（幹）に優先して置く → 通らないとボスに届かない場面が生まれる
 //  4) 正解の順番どおりに進めながら数値を決める
 //  5) 爆風で順番が変わることもあるので、自動で解いてみて解けなければ作り直す
 // ============================================================
 function generateLevel(lv) {
   for (let attempt = 0; attempt < 40; attempt++) {
-    const L = buildLevel(lv, attempt, CONFIG.loopRate(lv));
+    const L = buildLevel(lv, attempt, false);
     if (bestScore(L.towers.flat(), CONFIG.startPower, 80, null, L.edges) > 0) return L;
   }
-  return buildLevel(lv, 0, 1);   // 念のため：全部つながったステージ
+  return buildLevel(lv, 0, true);   // 念のため：全部の階に橋があるステージ
 }
 
-function buildLevel(lv, attempt, loopRate) {
+function buildLevel(lv, attempt, allBridges) {
   const rnd = makeRng(lv * 9973 + 17 + attempt * 104729);
   const nTowers = CONFIG.towers(lv);
   const nFloors = CONFIG.floorsPerTower(lv);
   const total = nTowers * nFloors;
   const bossKey = cellKey(nTowers - 1, nFloors - 1);
 
-  // 1) 迷路：通ったエリアのとなりから1つ選び、どこか1か所とつなぐ（ボスは最後）
+  // 1) 通路
   const edges = new Set([edgeKey('home', '0,0')]);
+  for (let t = 0; t < nTowers; t++) {
+    for (let f = 0; f < nFloors - 1; f++) edges.add(edgeKey(cellKey(t, f), cellKey(t, f + 1)));   // はしご
+  }
+  const nBridges = allBridges ? nFloors : Math.min(nFloors, CONFIG.bridgesPerGap(lv, nFloors));
+  for (let t = 0; t < nTowers - 1; t++) {
+    // 最後の隙間はてっぺん（ボスの階）に橋を架けない：ボスの塔の他の部屋がボス経由でしか行けなくなるため
+    const lastGap = t === nTowers - 2;
+    const floors = Array.from({ length: nFloors }, (_, f) => f).filter(f => !(lastGap && f === nFloors - 1 && nFloors > 1));
+    for (let i = floors.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [floors[i], floors[j]] = [floors[j], floors[i]];
+    }
+    floors.slice(0, nBridges).forEach(f => edges.add(edgeKey(cellKey(t, f), cellKey(t + 1, f))));
+  }
+
+  // 2) 通路にそって部屋を広げる（ボスは最後）
   const explored = new Set(['home']);
   const parent = new Map();
   const order = [];
@@ -118,23 +134,13 @@ function buildLevel(lv, attempt, loopRate) {
   for (let i = 0; i < total; i++) {
     const last = i === total - 1;
     const frontier = slots.filter(k => !explored.has(k) && (k !== bossKey || last)
-      && gridNeighbors(k).some(n => explored.has(n)));
+      && linkedNeighbors(k, edges).some(n => explored.has(n)));
     const k = frontier[Math.floor(rnd() * frontier.length)];
-    const from = gridNeighbors(k).filter(n => explored.has(n));
-    const par = from[Math.floor(rnd() * from.length)];
-    edges.add(edgeKey(k, par));
-    parent.set(k, par);
+    const from = linkedNeighbors(k, edges).filter(n => explored.has(n));
+    parent.set(k, from[Math.floor(rnd() * from.length)]);
     explored.add(k);
     order.push(k);
   }
-
-  // 2) 近道を足す
-  slots.forEach(k => {
-    const [t, f] = k.split(',').map(Number);
-    [[t + 1, f], [t, f + 1]].forEach(([a, b]) => {
-      if (a < nTowers && b < nFloors && rnd() < loopRate) edges.add(edgeKey(k, cellKey(a, b)));
-    });
-  });
 
   // 3) ボスへの道（迷路の幹）に乗っている部屋の、正解の順番での位置
   const onPath = new Set();

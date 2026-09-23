@@ -17,8 +17,9 @@ const CONFIG = {
   towers: lv => (lv <= 3 ? 3 : Math.min(2 + Math.floor(lv / 3), 7)),
   floorsPerTower: lv => Math.min(2 + Math.floor(lv / 4), 5),
 
-  // 近道（橋・はしご）の多さ。1 = 全部つながっている、小さいほど迷路っぽくなる
-  loopRate: lv => (lv <= 3 ? 1 : Math.max(0.12, 0.6 - (lv - 4) * 0.04)),
+  // 塔と塔の間に架かる橋の数（同じ階どうしだけ）。塔の中ははしごで上下自由
+  // 序盤は全部の階に橋 → 2本 → 1本（その階まで登らないと隣の塔へ渡れない）
+  bridgesPerGap: (lv, nFloors) => (lv <= 3 ? nFloors : lv <= 12 ? 2 : 1),
 
   // ---- テンポ ----
   speeds: [1, 2],          // ▶▶ ボタンで切り替える速さ
