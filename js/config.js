@@ -76,6 +76,14 @@ const CONFIG = {
   },
   coins: (lv, stars) => 5 + lv * 2 + stars * 5,
 
+  // ---- 金貨で買えるアイテム（ステージ中に使う。はじめて遊ぶ人には各1個プレゼント） ----
+  itemList: [
+    { key: 'hammer', name: 'ハンマー', icon: 'hammer', price: 60, desc: '行ける部屋の敵を1体、強さに関係なく倒す（パワーは増えない）' },
+    { key: 'potion', name: '大回復薬', icon: 'potion_blue', price: 50, desc: 'その場でパワー1.5倍' },
+    { key: 'scope', name: '水晶玉', icon: 'crystal_ball', price: 40, desc: '？ボックスの中身と、暗闇の部屋が見える' },
+    { key: 'shield', name: '盾', icon: 'shield', price: 80, desc: '負けそうなとき自動で1回だけ守ってくれる' },
+  ],
+
   // ---- 見た目 ----
   // 敵は「弱い → 強い」の順。数字が大きい敵ほど後ろから選ばれる
   monsters: [

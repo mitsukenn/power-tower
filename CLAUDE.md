@@ -23,7 +23,8 @@
   - `bestPlan()` / `bestScore()` は「どこまで寄り道してからボスに挑むか・どの罠を避けるか」を何百通りか試して最高パワーの目安を出し、★評価（`CONFIG.star3` / `star2`）と負けたときのヒントに使う。
   - ？ボックス（type `mystery`）は中身 `content` を生成時に決めておく。効果はパワーに対する割合なので、開けて即負けにはならない。
 - 画像は `img/`（WebP・軽量）を使う。原本は `assets/`。原本を追加・変更したら `python tools/optimize.py` で `img/` を作り直す。
-- セーブは localStorage（キー `powerTower.v2`）。解放レベル・★・金貨・ショップ強化・既読ヒントなど。
+- セーブは localStorage（キー `powerTower.v2`）。解放レベル・★・金貨・ショップ強化・アイテムの数（`save.items`）・既読ヒントなど。
+- アイテムは `CONFIG.itemList`。使う処理は game.js の「アイテム」の節（`useItem` / `hammerSmash` / `useShield`）。
 
 ## 公開時の注意
 

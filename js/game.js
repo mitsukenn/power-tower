@@ -35,6 +35,8 @@ function loadSave() {
     unlocked: 1, stars: {}, best: {}, coins: 0, muted: false, seen: {},
     ...s,
     up: { power: 0, undo: 0, ...(s.up || {}) },
+    // 持っているアイテム（はじめての人には各1個プレゼント）
+    items: { hammer: 1, potion: 1, scope: 1, shield: 1, ...(s.items || {}) },
   };
 }
 
@@ -91,6 +93,8 @@ function startLevel(lv) {
   state.evolveIdx = 0;
   state.combo = 0;
   state.levelCoins = 0;      // ？ボックスで拾った金貨
+  state.tool = null;         // 使用中のアイテム（ハンマー）
+  state.scope = false;       // 水晶玉を使ったか
   clearQueue();
   state.hintCell = null;
 
@@ -117,6 +121,7 @@ function startLevel(lv) {
   placeHero(state.heroFloorEl, true);
   updatePower();
   updateUndo();
+  renderItemBar();
   buildMinimap();
   playIntro().then(ok => { if (ok) showGuides(); });
 }
@@ -577,7 +582,7 @@ function updateReach() {
     const open = !c.cleared && isReachable(c, explored, state.level.edges);
     c.el.classList.toggle('open', open);
     c.el.classList.toggle('far', !c.cleared && !open);
-    c.el.classList.toggle('fog', state.level.type === 'dark' && !c.cleared && !open);
+    c.el.classList.toggle('fog', state.level.type === 'dark' && !state.scope && !c.cleared && !open);
   });
   document.querySelectorAll('.bridge, .ladder').forEach(b => {
     b.classList.toggle('used', explored.has(b.dataset.a) && explored.has(b.dataset.b));
@@ -916,6 +921,11 @@ async function killAnimation(cell, floorEl) {
 function onTap(cell, floorEl) {
   if (state.justDragged || state.over || cell.cleared) return;
   if (state.introPlaying) { skipIntro(); return; }
+  if (state.tool === 'hammer') {
+    if (!state.busy && floorEl.classList.contains('targetable')) hammerSmash(cell);
+    else rejectTap(floorEl);
+    return;
+  }
   if (state.busy) {
     // 移動中のマスを取り終えたら行けるマスなら予約できる
     if (state.moving && isReachable(cell, exploredSet(state.pendingCell), state.level.edges)) queueTap(cell, floorEl);
@@ -986,6 +996,7 @@ async function doTap(cell, floorEl) {
       await wait(CONFIG.fightMs / 2);
       hero.classList.remove('fight');
       state.combo = 0;
+      if (await useShield(cell)) return;
       return lose(cell);
     }
     if (cell.boss) await bossStrikes(cell, floorEl);
@@ -993,7 +1004,10 @@ async function doTap(cell, floorEl) {
   } else if (cell.type === 'poison') {
     state.combo = 0;
     fxBurst(CONFIG.fx.poison, floorEl);
-    if (after === null) return lose(cell);
+    if (after === null) {
+      if (await useShield(cell)) return;
+      return lose(cell);
+    }
     cell.unit.classList.add('dying');
     popText('−' + fmt(cell.value), floorEl, true);
     Sound.sfx.poison();
@@ -1105,6 +1119,151 @@ async function openMystery(cell, floorEl) {
 }
 
 // ============================================================
+//  アイテム（金貨で買って、ステージ中に使う）
+//  🔨 ハンマー：行ける部屋の敵を1体倒す（パワーは増えない）
+//  🧪 大回復薬：パワー1.5倍
+//  🔮 水晶玉：？ボックスの中身と暗闇の部屋が見える
+//  🛡 盾：負けそうなとき自動で1回守る
+// ============================================================
+function renderItemBar() {
+  const bar = $('item-bar');
+  bar.innerHTML = '';
+  CONFIG.itemList.forEach(it => {
+    const n = save.items[it.key] || 0;
+    const b = document.createElement('button');
+    b.className = ['item-btn', it.key, state.tool === it.key ? 'active' : '', n ? '' : 'empty'].join(' ');
+    b.innerHTML = `<img src="${IMG('items', it.icon)}" alt=""><span class="item-count">${n}</span>`;
+    b.setAttribute('aria-label', `${it.name}（${n}個）`);
+    b.onclick = () => useItem(it.key);
+    bar.appendChild(b);
+  });
+}
+
+function useItem(key) {
+  if (state.over || state.moving || state.introPlaying) return;
+  const it = CONFIG.itemList.find(x => x.key === key);
+  const n = save.items[key] || 0;
+  if (key === 'shield') { showTip(`🛡 <b>盾</b>：${it.desc}（残り${n}）`, 2600); return; }
+  if (n <= 0) { showTip(`${it.name}がない！ <b>強化ショップ</b>で金貨で買えるよ`, 2200); Sound.sfx.deny(); return; }
+  Sound.sfx.click();
+  if (key === 'hammer') {
+    state.tool = state.tool === 'hammer' ? null : 'hammer';
+    markHammerTargets();
+    renderItemBar();
+    if (state.tool) showTip('🔨 壊したい敵をタップ！（光っている部屋の敵。ボス以外）<br>もう一度ハンマーを押すとやめる', 0);
+    else hideTip();
+    return;
+  }
+  save.items[key]--;
+  persist();
+  if (key === 'potion') {
+    // 1手戻すで元のパワーに戻せるよう、履歴に残す
+    state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: null, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins });
+    const add = Math.ceil(state.power * 0.5);
+    state.power += add;
+    fxBurst(CONFIG.fx.potion, state.heroFloorEl, 1.8);
+    sparks(worldPos(state.heroFloorEl), 16, ['#fff', '#7fe0ff', '#4fd46a'], 80);
+    popText('+' + fmt(add), state.heroFloorEl, false, 'big');
+    Sound.sfx.potion();
+    updatePower();
+    checkEvolve();
+    updateUndo();
+  }
+  if (key === 'scope') {
+    state.scope = true;
+    revealMysteries();
+    updateReach();
+    fxBurst(IMG('effects', 'magic_circle'), state.heroFloorEl, 2);
+    Sound.sfx.double();
+    showTip('🔮 ？ボックスの中身と、暗闇の部屋が見えるようになった！', 2600);
+  }
+  renderItemBar();
+}
+
+// ハンマーで壊せる敵を光らせる
+function markHammerTargets() {
+  const ex = exploredSet();
+  state.cells.forEach(c => c.el.classList.toggle('targetable',
+    state.tool === 'hammer' && !c.cleared && c.type === 'monster' && !c.boss && isReachable(c, ex, state.level.edges)));
+}
+
+async function hammerSmash(cell) {
+  state.tool = null;
+  markHammerTargets();
+  hideTip();
+  save.items.hammer--;
+  persist();
+  renderItemBar();
+  state.busy = true;
+  state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins });
+  followFloor(cell.el, 300);
+  // 大きなハンマーが上から振り下ろされる
+  const p = worldPos(cell.el);
+  const h = document.createElement('img');
+  h.className = 'hammer-drop';
+  h.src = IMG('items', 'hammer');
+  h.style.left = p.x + 'px';
+  h.style.top = p.y + 'px';
+  $('world').appendChild(h);
+  Sound.sfx.whoosh();
+  await wait(380);
+  h.remove();
+  fxBurst(CONFIG.fx.kill, cell.el, 1.6);
+  fxBurst(CONFIG.fx.shockwave, cell.el, 1.8);
+  sparks(p, 22, ['#fff', '#ffe066', '#ffb03b'], 100);
+  knockOut(cell, 1.3);
+  shakeStage();
+  Sound.sfx.critical();
+  popText('SMASH!', cell.el, false, 'crit');
+  cell.cleared = true;
+  cell.el.classList.add('cleared');
+  await wait(450);
+  updatePower();
+  updateArrows();
+  updateUndo();
+  state.busy = false;
+}
+
+// 水晶玉：？ボックスの中身を先に見せる
+function revealMysteries() {
+  state.cells.forEach(c => {
+    if (c.type !== 'mystery' || c.cleared) return;
+    const m = CONFIG.mysteryLook[c.content];
+    c.unit.classList.add('peeked', m.good ? 'good' : 'bad');
+    c.unit.querySelector('.val').textContent = m.label;
+    const box = c.unit.querySelector('.qbox');
+    if (box) box.innerHTML = `<img src="${m.img}" alt="">`;
+  });
+}
+
+// 盾：負けそうなとき自動で1回守る。守ったら true
+async function useShield(cell) {
+  if ((save.items.shield || 0) <= 0) return false;
+  save.items.shield--;
+  persist();
+  const hero = $('hero');
+  fxBurst(IMG('effects', 'barrier'), cell.el, 1.8);
+  popText('🛡 ガード！', cell.el, false, 'crit');
+  Sound.sfx.undo();
+  shakeStage('small');
+  await wait(450);
+  // この1手はなかったことにして、元の部屋へ戻る
+  state.history.pop();
+  hero.style.setProperty('--move-ms', sp(250) + 'ms');
+  placeHero(state.heroFloorEl, false);
+  setHeroPose('idle');
+  await wait(260);
+  state.combo = 0;
+  state.pendingCell = null;
+  state.moving = false;
+  state.busy = false;
+  renderItemBar();
+  updateUndo();
+  showTip(`🛡 盾が守ってくれた！（残り${save.items.shield}）`, 2200);
+  return true;
+}
+
+// ============================================================
 //  1手戻す
 // ============================================================
 function updateUndo() {
@@ -1116,8 +1275,8 @@ function undo() {
   if (state.moving || !state.history.length || state.undoLeft <= 0) return;
   const h = state.history.pop();
   state.undoLeft--;
-  const cell = state.cells.find(c => c.id === h.cellId);
-  if (cell.cleared) {
+  const cell = h.cellId == null ? null : state.cells.find(c => c.id === h.cellId);
+  if (cell && cell.cleared) {
     cell.cleared = false;
     cell.el.classList.remove('cleared');
     cell.unit.classList.remove('dying', 'ko', 'hit');
@@ -1568,6 +1727,32 @@ function renderShop() {
       save.up[it.key]++;
       persist();
       Sound.sfx.evolve();
+      renderShop();
+    };
+    card.appendChild(btn);
+    list.appendChild(card);
+  });
+
+  // アイテム（何個でも買える。ステージ中に左のボタンで使う）
+  const head = document.createElement('h3');
+  head.className = 'shop-head';
+  head.textContent = '🎒 アイテム（ステージ中に使える）';
+  list.appendChild(head);
+  CONFIG.itemList.forEach(it => {
+    const n = save.items[it.key] || 0;
+    const card = document.createElement('div');
+    card.className = 'shop-card item';
+    card.innerHTML = `<img src="${IMG('items', it.icon)}" alt="">
+      <div class="shop-info"><b>${it.name}</b><span>持っている数：${n}</span><small>${it.desc}</small></div>`;
+    const btn = document.createElement('button');
+    btn.className = 'buy-btn';
+    btn.innerHTML = `<img src="${IMG('items', 'coins')}" alt="">${it.price}`;
+    btn.disabled = save.coins < it.price;
+    btn.onclick = () => {
+      save.coins -= it.price;
+      save.items[it.key] = n + 1;
+      persist();
+      Sound.sfx.hit();
       renderShop();
     };
     card.appendChild(btn);
