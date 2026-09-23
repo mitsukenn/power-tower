@@ -3,10 +3,20 @@
 どちらのPCで作業しても、ここを見れば次にやることが分かるようにしておく。
 終わったら `[x]`、思いついたら追記。
 
+## 済み
+- [x] 3D化（立体の塔・影・ジャンプ移動）
+- [x] 素材201点を ChatGPT で生成（assets/README.md）、敵・ボス・ヒーロー・背景・エフェクトを画像化
+
+## 用意済みの素材を使ってできること
+- [ ] 罠マス：`items/bomb`・`items/poison`（パワー半減 / −N）→ 順番をもっと考えさせる
+- [ ] 鍵と宝箱：`items/key`・`items/chest`・`items/chest_open`
+- [ ] お姫様救出：`allies/princess` を `stage/cage` に入れてボスの上に置く（広告っぽさUP）
+- [ ] 塔の見た目を背景に合わせて変える：`stage/wall_stone|wall_wood|wall_ice|wall_lava`、屋根 `roof_red|roof_blue`
+- [ ] クリア演出：`effects/confetti`・`ui/star_gold`・`ui/trophy`
+- [ ] ヒーローの見た目がパワーで進化：`hero/aura_blue` → `aura_gold` → `armored` → `king`
+- [ ] 背景の手前に `stage/cloud`・`stage/tree`・`stage/torch` を置いて奥行きを出す
+
 ## ゲーム性
-- [ ] 罠マス（💣 パワー半減 / −N）を追加して、順番をもっと考えさせる
-- [ ] 鍵🔑と宝箱🎁：鍵を取らないと開かない階
-- [ ] 救出するお姫様👸をボスの上に置く（広告っぽさUP）
 - [ ] 星3評価（最終パワーが理論最大値にどれだけ近いか）
 - [ ] 10レベルごとにステージの見た目（空の色・塔の素材）を変える
 

@@ -27,15 +27,23 @@ const CONFIG = {
   // 見た目。画像パスがあれば画像、なければ絵文字で表示する
   // 敵は「弱い → 強い」の順。数字が大きい敵ほど後ろのグループから選ばれる
   monsters: [
-    ['slime', '👾'], ['bat', '🦇'], ['mushroom', '🍄'], ['goblin', '👺'], ['ghost', '👻'],
-    ['skeleton', '💀'], ['zombie', '🧟'], ['wolf', '🐺'], ['spider', '🕷️'], ['mummy', '🧟'],
-    ['scorpion', '🦂'], ['imp', '😈'], ['harpy', '🦅'], ['pirate', '🏴‍☠️'], ['ninja', '🥷'],
-    ['oni', '👹'], ['witch', '🧙'], ['skeleton_mage', '💀'], ['shark_man', '🦈'], ['troll', '👹'],
-    ['fire_spirit', '🔥'], ['thunder_bird', '⚡'], ['yeti', '❄️'], ['golem', '🗿'], ['robot', '🤖'],
-    ['baby_dragon', '🐲'], ['black_knight', '⚔️'],
+    ['slime', '👾'], ['bat', '🦇'], ['mushroom', '🍄'], ['frog', '🐸'], ['pumpkin', '🎃'],
+    ['snake', '🐍'], ['cactus', '🌵'], ['goblin', '👺'], ['ghost', '👻'], ['skeleton', '💀'],
+    ['zombie', '🧟'], ['snowman', '⛄'], ['wolf', '🐺'], ['spider', '🕷️'], ['mummy', '🧟'],
+    ['mimic', '📦'], ['scorpion', '🦂'], ['poison_slime', '👾'], ['imp', '😈'], ['harpy', '🦅'],
+    ['gold_bat', '🦇'], ['zombie_dog', '🐕'], ['pirate', '🏴‍☠️'], ['ninja', '🥷'], ['bear', '🐻'],
+    ['poison_mushroom', '🍄'], ['oni', '👹'], ['witch', '🧙'], ['orc', '👹'], ['skeleton_mage', '💀'],
+    ['shark_man', '🦈'], ['ice_wolf', '🐺'], ['troll', '👹'], ['goblin_king', '👑'], ['gold_scorpion', '🦂'],
+    ['fire_spirit', '🔥'], ['thunder_bird', '⚡'], ['blue_oni', '👹'], ['gargoyle', '🗿'], ['yeti', '❄️'],
+    ['skeleton_general', '💀'], ['golem', '🗿'], ['robot', '🤖'], ['baby_dragon', '🐲'], ['black_knight', '⚔️'],
   ].map(([name, emoji]) => ({ img: `assets/enemies/${name}.png`, emoji })),
   bosses: ['dragon', 'demon_king', 'giant_golem', 'kraken']
     .map(name => ({ img: `assets/bosses/${name}.png`, emoji: '🐉' })),
+  // 背景（レベルごとに順番に切り替わる）。assets/backgrounds に置いたファイル名を並べる
+  backgrounds: [
+    'meadow_castle', 'sunset_castle', 'night_castle', 'forest', 'desert', 'snow',
+    'volcano', 'beach', 'sky', 'cave', 'demon_castle',
+  ].map(name => `assets/backgrounds/${name}.jpg`),
   // 演出用エフェクト画像
   fx: {
     kill: 'assets/effects/explosion.png',
@@ -194,6 +202,7 @@ function startLevel(lv) {
   state.over = false;
 
   $('level').textContent = lv;
+  setBackground(lv);
   $('overlay').classList.add('hidden');
   const hero = $('hero');
   hero.classList.remove('dying', 'fight');
@@ -205,6 +214,16 @@ function startLevel(lv) {
   state.heroFloorEl = $('home');
   placeHero(state.heroFloorEl, true);
   updatePower();
+}
+
+// 背景画像を読み込めたときだけ差し替える（無ければ空のグラデーションのまま）
+function setBackground(lv) {
+  const list = CONFIG.backgrounds;
+  const src = list[(lv - 1) % list.length];
+  const probe = new Image();
+  probe.onload = () => document.documentElement.style.setProperty('--bg-img', `url("${src}")`);
+  probe.onerror = () => document.documentElement.style.setProperty('--bg-img', 'none');
+  probe.src = src;
 }
 
 function buildStage() {
