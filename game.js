@@ -208,6 +208,7 @@ function makeUnit(cell) {
     u.className = 'unit item';
   }
   u.innerHTML = `<span class="emoji">${emoji}</span><span class="val">${label}</span>`;
+  u.style.setProperty('--bob-delay', (-Math.random() * 1.8).toFixed(2) + 's');
   cell.unit = u;
   return u;
 }
@@ -217,7 +218,9 @@ function layout() {
   if (!state.level) return;
   const stage = $('stage');
   const nT = state.level.towers.length + 1; // 自分の塔を含む
-  const w = stage.clientWidth - 24 - 8 * (nT - 1) - nT * 16;
+  const depth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--depth')) || 0;
+  // 左右の余白・塔どうしの間隔・各塔の内側余白・3Dの側面ぶんを差し引く
+  const w = stage.clientWidth - 24 - depth - (8 + depth) * (nT - 1) - nT * 12 - 16;
   const h = stage.clientHeight - 70;
   const floorW = Math.max(44, Math.min(96, Math.floor(w / nT)));
   const floorH = Math.max(40, Math.min(80, Math.floor(h / state.level.nFloors) - 4));
@@ -269,9 +272,11 @@ async function onTap(cell, floorEl) {
   state.busy = true;
 
   const hero = $('hero');
+  hero.classList.add('jump');
   placeHero(floorEl, false);
   beep(440, 60, 'triangle');
   await wait(CONFIG.moveMs);
+  hero.classList.remove('jump');
 
   if (cell.type === 'monster') {
     hero.classList.add('fight');
@@ -305,6 +310,9 @@ async function onTap(cell, floorEl) {
     beep(990, 160, 'sine', 0.08);
   }
 
+  hero.classList.remove('grow');
+  void hero.offsetWidth;
+  hero.classList.add('grow');
   await wait(CONFIG.fightMs / 2);
   cell.cleared = true;
   floorEl.classList.add('cleared');
