@@ -12,31 +12,43 @@ function makeRng(seed) {
   };
 }
 
-function shuffle(arr, rnd) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rnd() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
 const between = (rnd, [a, b]) => a + rnd() * (b - a);
 
 // ============================================================
-//  移動ルール：通ったエリア（スタート地点＋クリア済みのマス）に隣接するマスにだけ進める
-//  隣接 = 同じ塔の1つ上・1つ下の階、または隣の塔の同じ階（柱と橋でつながっている）
-//  スタート地点 'home' は 1本目の塔の1階 (0,0) とつながっている
+//  移動ルールと通路
+//  - 部屋どうしは「橋（隣の塔の同じ階）」と「はしご（同じ塔の上下）」がある所だけつながっている
+//  - 進めるのは、通ったエリア（スタート地点 'home' ＋クリア済みの部屋）とつながった部屋だけ
+//  - 'home' は 1本目の塔の1階 (0,0) と必ずつながっている
+//  edges: つながっている組の Set（edgeKey）。null なら全部つながっている扱い
 // ============================================================
 const cellKey = (t, f) => `${t},${f}`;
 const neighborsOf = (t, f) => [[t, f - 1], [t, f + 1], [t - 1, f], [t + 1, f]];
+const edgeKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
-// explored: 通ったエリアのキーの Set（'home' とクリア済みマスの cellKey）
-function isReachable(cell, explored) {
-  if (cell.t === 0 && cell.f === 0 && explored.has('home')) return true;
-  return neighborsOf(cell.t, cell.f).some(([t, f]) => explored.has(cellKey(t, f)));
+// となりのノード（つながっているかは問わない）
+function gridNeighbors(k) {
+  if (k === 'home') return ['0,0'];
+  const [t, f] = k.split(',').map(Number);
+  const list = neighborsOf(t, f).map(([a, b]) => cellKey(a, b));
+  if (t === 0 && f === 0) list.push('home');
+  return list;
 }
 
-// マスを1つ取ったあとのパワー。負ける（力尽きる）なら null
+// 橋・はしごでつながっているとなりのノード
+function linkedNeighbors(k, edges) {
+  return gridNeighbors(k).filter(n => !edges || edges.has(edgeKey(k, n)));
+}
+
+function isReachable(cell, explored, edges) {
+  return linkedNeighbors(cellKey(cell.t, cell.f), edges).some(n => explored.has(n));
+}
+
+// ============================================================
+//  マスの効果
+// ============================================================
+const isBomb = c => c.type === 'bomb' || (c.type === 'mystery' && c.content === 'bomb');
+
+// マスを1つ取ったあとのパワー（爆風は含まない）。負ける（力尽きる）なら null
 function applyCell(power, cell) {
   switch (cell.type) {
     case 'monster': return cell.value < power ? power + cell.value : null;
@@ -56,36 +68,97 @@ function applyCell(power, cell) {
   return power;
 }
 
+// 💣の爆風：つながったとなりの部屋にいる敵（ボス以外）を、強さに関係なく吹き飛ばして吸収する
+// byKey: まだ取っていないマスの Map（cellKey → cell）
+function blastTargets(bomb, byKey, edges) {
+  return linkedNeighbors(cellKey(bomb.t, bomb.f), edges)
+    .map(k => byKey.get(k))
+    .filter(c => c && !c.cleared && c.type === 'monster' && !c.boss);
+}
+
+// 爆風込みで1マス取る。{ power, blasted } を返す。負けるなら null
+function takeCell(power, cell, byKey, edges) {
+  const p = applyCell(power, cell);
+  if (p === null) return null;
+  if (!isBomb(cell)) return { power: p, blasted: [] };
+  const blasted = blastTargets(cell, byKey, edges);
+  return { power: p + blasted.reduce((s, c) => s + c.value, 0), blasted };
+}
+
 // ============================================================
 //  レベル生成
-//  「正解の順番」を先に決めて数値を作り、そのあと塔にシャッフル配置する → 必ずクリア可能
-//  正解の順番では 💣は序盤、×2 と ☠ は終盤。逆にすると損をしたり負けたりする
+//  1) スタートから部屋を1つずつ広げて迷路（木構造）を作る。広げた順が「正解の順番」
+//  2) ときどき近道（橋・はしご）を足す。序盤は全部つながっている
+//  3) 💣・☠ はボスへの一本道に優先して置く → 通らないとボスに届かない場面が生まれる
+//  4) 正解の順番どおりに進めながら数値を決める
+//  5) 爆風で順番が変わることもあるので、自動で解いてみて解けなければ作り直す
 // ============================================================
 function generateLevel(lv) {
-  const rnd = makeRng(lv * 9973 + 17);
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const L = buildLevel(lv, attempt, CONFIG.loopRate(lv));
+    if (bestScore(L.towers.flat(), CONFIG.startPower, 80, null, L.edges) > 0) return L;
+  }
+  return buildLevel(lv, 0, 1);   // 念のため：全部つながったステージ
+}
+
+function buildLevel(lv, attempt, loopRate) {
+  const rnd = makeRng(lv * 9973 + 17 + attempt * 104729);
   const nTowers = CONFIG.towers(lv);
   const nFloors = CONFIG.floorsPerTower(lv);
   const total = nTowers * nFloors;
+  const bossKey = cellKey(nTowers - 1, nFloors - 1);
 
-  // 1) 正解の順番でのマスの種類を決める
+  // 1) 迷路：通ったエリアのとなりから1つ選び、どこか1か所とつなぐ（ボスは最後）
+  const edges = new Set([edgeKey('home', '0,0')]);
+  const explored = new Set(['home']);
+  const parent = new Map();
+  const order = [];
+  const slots = [];
+  for (let t = 0; t < nTowers; t++) for (let f = 0; f < nFloors; f++) slots.push(cellKey(t, f));
+  for (let i = 0; i < total; i++) {
+    const last = i === total - 1;
+    const frontier = slots.filter(k => !explored.has(k) && (k !== bossKey || last)
+      && gridNeighbors(k).some(n => explored.has(n)));
+    const k = frontier[Math.floor(rnd() * frontier.length)];
+    const from = gridNeighbors(k).filter(n => explored.has(n));
+    const par = from[Math.floor(rnd() * from.length)];
+    edges.add(edgeKey(k, par));
+    parent.set(k, par);
+    explored.add(k);
+    order.push(k);
+  }
+
+  // 2) 近道を足す
+  slots.forEach(k => {
+    const [t, f] = k.split(',').map(Number);
+    [[t + 1, f], [t, f + 1]].forEach(([a, b]) => {
+      if (a < nTowers && b < nFloors && rnd() < loopRate) edges.add(edgeKey(k, cellKey(a, b)));
+    });
+  });
+
+  // 3) ボスへの道（迷路の幹）に乗っている部屋の、正解の順番での位置
+  const onPath = new Set();
+  for (let k = parent.get(bossKey); k && k !== 'home'; k = parent.get(k)) onPath.add(order.indexOf(k));
+
   const kinds = new Array(total).fill(null);
   kinds[total - 1] = 'boss';
-  const placeIn = (kind, count, from, to) => {
-    for (let i = 0; i < count; i++) {
-      for (let tries = 0; tries < 60; tries++) {
-        const idx = from + Math.floor(rnd() * (to - from + 1));
-        if (idx >= 0 && idx < total - 1 && !kinds[idx]) { kinds[idx] = kind; break; }
-      }
+  const inRange = (from, to) => i => i >= from && i <= to && i < total - 1 && !kinds[i];
+  const placeIn = (kind, count, from, to, preferPath) => {
+    for (let n = 0; n < count; n++) {
+      const ok = inRange(from, to);
+      const pathCand = preferPath ? [...onPath].filter(ok) : [];
+      const all = Array.from({ length: total }, (_, i) => i).filter(ok);
+      const cand = pathCand.length ? pathCand : all;
+      if (cand.length) kinds[cand[Math.floor(rnd() * cand.length)]] = kind;
     }
   };
-  // 💣 はステージのどこにでも。避けて回り道するか、踏んで近道するか
-  placeIn('bomb', CONFIG.bombs(lv), 1, Math.max(1, Math.floor(total * 0.8)));
-  placeIn('mystery', CONFIG.mysteries(lv), 1, total - 2);
-  placeIn('double', CONFIG.doubles(lv), Math.floor(total * 0.55), total - 2);
-  placeIn('poison', CONFIG.poisons(lv), Math.floor(total * 0.5), total - 2);
-  placeIn('potion', Math.round(total * CONFIG.potionRate), 0, total - 2);
+  placeIn('bomb', CONFIG.bombs(lv), 1, Math.floor(total * 0.8), true);
+  placeIn('poison', CONFIG.poisons(lv), Math.floor(total * 0.5), total - 2, true);
+  placeIn('mystery', CONFIG.mysteries(lv), 1, total - 2, false);
+  placeIn('double', CONFIG.doubles(lv), Math.floor(total * 0.55), total - 2, false);
+  placeIn('potion', Math.round(total * CONFIG.potionRate), 0, total - 2, false);
 
-  // 2) 正解の順番どおりに進めながら数値を決める
+  // 4) 正解の順番どおりに進めながら数値を決める
   const start = CONFIG.startPower;
   let p = start;
   const seq = kinds.map(kind => {
@@ -120,7 +193,7 @@ function generateLevel(lv) {
   });
   const intended = p;
 
-  // 3) 見た目：数字の大きさ（log スケール）で弱い〜強いモンスターを割り当てる
+  // 見た目：数字の大きさ（log スケール）で弱い〜強いモンスターを割り当てる
   const maxV = Math.max(...seq.filter(c => c.type === 'monster').map(c => c.value), 2);
   const list = CONFIG.monsters;
   seq.forEach(cell => {
@@ -130,48 +203,35 @@ function generateLevel(lv) {
     const jitter = Math.floor(rnd() * 3) - 1;
     cell.look = list[Math.max(0, Math.min(list.length - 1, band + jitter))];
   });
-
   seq[total - 1].look = { img: IMG('bosses', worldOf(lv).boss), emoji: '🐉' };
 
-  // 4) 配置：スタートから「通ったエリアに隣接するマス」をランダムに1つずつ広げていった順に置く
-  //    → 正解の順番どおりに進めば、いつも隣のマスに行ける（必ずクリア可能）
-  //    ボスは最後の塔のてっぺんで、最後に到達するマス
-  const bossKey = cellKey(nTowers - 1, nFloors - 1);
-  const slots = [];
-  for (let t = 0; t < nTowers; t++) for (let f = 0; f < nFloors; f++) slots.push({ t, f });
-  const explored = new Set(['home']);
+  // 配置
   const towers = Array.from({ length: nTowers }, () => new Array(nFloors));
-  for (let i = 0; i < total; i++) {
-    const last = i === total - 1;
-    const frontier = slots.filter(s => {
-      const k = cellKey(s.t, s.f);
-      return !explored.has(k) && isReachable(s, explored) && (k !== bossKey || last);
-    });
-    const s = frontier[Math.floor(rnd() * frontier.length)];
-    explored.add(cellKey(s.t, s.f));
-    towers[s.t][s.f] = { ...seq[i], t: s.t, f: s.f, cleared: false };
-  }
+  order.forEach((k, i) => {
+    const [t, f] = k.split(',').map(Number);
+    towers[t][f] = { ...seq[i], t, f, cleared: false };
+  });
   let id = 0;
   towers.forEach(floors => floors.forEach(c => { c.id = id++; }));
-  return { towers, nFloors, intended };
+  return { towers, nFloors, edges, intended };
 }
 
 // ============================================================
 //  そのレベルで出せる最高パワーの目安（★評価に使う）
 //  クリア条件は「ボスを倒す」。ほかの部屋は寄り道自由なので、
-//  「どこまで寄り道してからボスに挑むか」「どの罠を避けるか」を変えた手順を何百通りか試す
+//  「どこまで寄り道してからボスに挑むか」「どの罠を避けるか・💣をどこで使うか」を変えた手順を何百通りか試す
 // ============================================================
-function bestScore(cells, start, tries = 400) {
-  return bestPlan(cells, start, tries).score;
+function bestScore(cells, start, tries = 400, explored0 = null, edges = null) {
+  return bestPlan(cells, start, tries, explored0, edges).score;
 }
 
-// 損をするマス（避けられるなら避けたい）
+// 損をしやすいマス（避けたり、後回しにしたりする候補）
 const isHarmful = c => c.type === 'bomb' || c.type === 'poison'
   || (c.type === 'mystery' && (c.content === 'bomb' || c.content === 'minus'));
 
 // 最高スコアと、そのときの「最初の1手」を返す（負けたときのヒントに使う）
 // cells: まだ取っていないマス、explored0: 通ったエリア（省略時はスタート地点だけ）
-function bestPlan(cells, start, tries = 400, explored0 = null) {
+function bestPlan(cells, start, tries = 400, explored0 = null, edges = null) {
   const rnd = makeRng(cells.length * 7919 + start);
   const basePri = c => {
     if (c.type === 'mystery') return isHarmful(c) ? 0.5 : 3.5;
@@ -184,35 +244,50 @@ function bestPlan(cells, start, tries = 400, explored0 = null) {
     return 3;
   };
   const boss = cells.find(c => c.boss);
+  // 速くするため、各マスの「つながったとなり」を先に計算しておく
+  const keyOf = new Map(cells.map(c => [c, cellKey(c.t, c.f)]));
+  const links = new Map(cells.map(c => [c, linkedNeighbors(keyOf.get(c), edges)]));
+  const cellAt = new Map(cells.map(c => [keyOf.get(c), c]));
+  const others = cells.filter(c => c !== boss);
   let best = -1, first = null;
   for (let t = 0; t < tries; t++) {
     const noise = t === 0 ? 0 : rnd() * 3;
     const pri = new Map(cells.map(c => [c, basePri(c) + rnd() * noise]));
-    // 半分くらいの手順では、損をするマスを最初から避ける
+    // 半分くらいの手順では、損をしやすいマスをなるべく避ける
     const avoid = new Set(t === 0 ? [] : cells.filter(c => isHarmful(c) && rnd() < 0.5));
     let p = start, firstPick = null;
-    const left = cells.filter(c => c !== boss && !avoid.has(c));
+    const taken = new Set();
     const explored = new Set(explored0 || ['home']);
+    const reach = c => links.get(c).some(k => explored.has(k));
+    // 爆風で巻き込める敵
+    const blastOf = c => links.get(c).map(k => cellAt.get(k))
+      .filter(n => n && !taken.has(n) && n.type === 'monster' && !n.boss);
     // 今この時点でボスに挑んだらどうなるか（勝てるなら候補）
     const tryFinish = () => {
-      if (!boss || !isReachable(boss, explored)) return;
+      if (!boss || !reach(boss)) return;
       const fin = applyCell(p, boss);
       if (fin !== null && fin > best) { best = fin; first = firstPick || boss; }
     };
+    const take = c => { taken.add(c); explored.add(keyOf.get(c)); };
     tryFinish();
-    while (left.length) {
-      let pick = -1, pickKey = Infinity;
-      left.forEach((c, i) => {
-        if (!isReachable(c, explored)) return;                   // まだ行けない
-        if (applyCell(p, c) === null) return;                    // 今は取れない
-        const key = pri.get(c) + (c.value ? c.value / (p * 10) : 0);
-        if (key < pickKey) { pickKey = key; pick = i; }
-      });
-      if (pick < 0) break;
-      if (!firstPick) firstPick = left[pick];
-      p = applyCell(p, left[pick]);
-      explored.add(cellKey(left[pick].t, left[pick].f));
-      left.splice(pick, 1);
+    for (;;) {
+      let pick = null, pickKey = Infinity, pickP = 0, pickBlast = null;
+      for (const c of others) {
+        if (taken.has(c) || !reach(c)) continue;
+        let np = applyCell(p, c);
+        if (np === null) continue;                                  // 今は取れない
+        let blast = null;
+        if (isBomb(c)) { blast = blastOf(c); np += blast.reduce((s, n) => s + n.value, 0); }
+        let key = pri.get(c) + (c.value ? c.value / (p * 10) : 0);
+        if (avoid.has(c)) key += 100;                               // 避けたいマスは他に無いときだけ
+        if (blast && blast.length) key -= 1;                        // 爆風で敵を巻き込めるなら優先
+        if (key < pickKey) { pickKey = key; pick = c; pickP = np; pickBlast = blast; }
+      }
+      if (!pick || (avoid.has(pick) && rnd() < 0.5)) break;
+      if (!firstPick) firstPick = pick;
+      p = pickP;
+      take(pick);
+      if (pickBlast) pickBlast.forEach(take);
       tryFinish();
     }
   }

@@ -1026,3 +1026,17 @@ html, body {
   from { transform: scale(0) translateY(20px); }
 }
 .mm-dot.mystery { background: #ffb300; box-shadow: 0 0 3px #fff; }
+
+/* ===== はしご（同じ塔の上下をつなぐ） ===== */
+.ladder {
+  position: absolute;
+  z-index: 3;
+  width: 16px;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, #7a4f26 0 3px, transparent 3px 13px, #7a4f26 13px 16px),
+    repeating-linear-gradient(0deg, transparent 0 7px, #a8733f 7px 10px);
+  filter: brightness(.6) saturate(.6) drop-shadow(1px 2px 1px rgba(0, 0, 0, .4));
+  transition: filter .3s;
+}
+.ladder.used { filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, .4)); }

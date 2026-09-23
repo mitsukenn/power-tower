@@ -82,7 +82,7 @@ function startLevel(lv) {
   state.power = state.start;
   state.level = generateLevel(lv);
   state.cells = state.level.towers.flat();
-  state.best = Math.max(bestScore(state.cells, state.start), 1);
+  state.best = Math.max(bestScore(state.cells, state.start, 300, null, state.level.edges), 1);
   state.history = [];
   state.undoLeft = CONFIG.undoPerLevel + save.up.undo;
   state.busy = false;
@@ -426,7 +426,7 @@ function updateMinimap() {
     if (!c.dot) return;
     let kind = c.type === 'monster' ? (c.value < state.power ? 'weak' : 'strong') : c.type;
     if (c.boss) kind += ' boss';
-    if (!c.cleared && !isReachable(c, explored)) kind += ' far';
+    if (!c.cleared && !isReachable(c, explored, state.level.edges)) kind += ' far';
     c.dot.className = `mm-dot ${kind}${c.cleared ? ' cleared' : ''}`;
   });
   const hd = $('mm-hero');
@@ -500,23 +500,17 @@ function exploredSet(extra) {
 function updateReach() {
   const explored = exploredSet();
   state.cells.forEach(c => {
-    const open = !c.cleared && isReachable(c, explored);
+    const open = !c.cleared && isReachable(c, explored, state.level.edges);
     c.el.classList.toggle('open', open);
     c.el.classList.toggle('far', !c.cleared && !open);
   });
-  document.querySelectorAll('.bridge').forEach(b => {
+  document.querySelectorAll('.bridge, .ladder').forEach(b => {
     b.classList.toggle('used', explored.has(b.dataset.a) && explored.has(b.dataset.b));
   });
 }
 
-// 通ったエリアの中での隣接（'home' は 1本目の塔の1階とつながる）
-function nodeNeighbors(k) {
-  if (k === 'home') return ['0,0'];
-  const [t, f] = k.split(',').map(Number);
-  const list = neighborsOf(t, f).map(([a, b]) => cellKey(a, b));
-  if (t === 0 && f === 0) list.push('home');
-  return list;
-}
+// 橋・はしごでつながったとなり（'home' は 1本目の塔の1階とつながる）
+const nodeNeighbors = k => linkedNeighbors(k, state.level.edges);
 const elOfKey = k => (k === 'home' ? $('home') : state.cellByKey.get(k).el);
 
 // ヒーローが今いる場所から、通ったエリアをたどって target の隣まで行く道（通過するマスの要素の配列）
@@ -540,14 +534,16 @@ function heroPath(target) {
   return [];
 }
 
-// 隣の塔の同じ階どうしを橋でつなぐ（スタート地点と1本目の塔の1階も）
+// 通路を描く：隣の塔の同じ階どうしは「橋」、同じ塔の上下は「はしご」。つながっている所だけ
 function buildBridges() {
   const world = $('world');
-  world.querySelectorAll('.bridge').forEach(b => b.remove());
+  world.querySelectorAll('.bridge, .ladder').forEach(b => b.remove());
   const towers = state.level.towers;
+  const edges = state.level.edges;
   const depth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--depth')) || 0;
-  const add = (aKey, bKey, aEl, bEl) => {
-    const w = world.getBoundingClientRect();
+  const w = world.getBoundingClientRect();
+  const bridge = (aKey, bKey, aEl, bEl) => {
+    if (!edges.has(edgeKey(aKey, bKey))) return;
     const ra = aEl.getBoundingClientRect(), rb = bEl.getBoundingClientRect();
     const left = ra.right - w.left + 6 + depth;
     const br = document.createElement('div');
@@ -559,10 +555,25 @@ function buildBridges() {
     br.style.top = (ra.bottom - w.top - 12) + 'px';
     world.appendChild(br);
   };
-  add('home', '0,0', $('home'), towers[0][0].el);
-  for (let t = 0; t < towers.length - 1; t++) {
-    towers[t].forEach((c, f) => add(cellKey(t, f), cellKey(t + 1, f), c.el, towers[t + 1][f].el));
-  }
+  // はしご：下の部屋の真ん中あたりから上の部屋の真ん中あたりまで、部屋の左端に立てかける
+  const ladder = (lower, upper) => {
+    const aKey = cellKey(lower.t, lower.f), bKey = cellKey(upper.t, upper.f);
+    if (!edges.has(edgeKey(aKey, bKey))) return;
+    const rl = lower.el.getBoundingClientRect(), ru = upper.el.getBoundingClientRect();
+    const ld = document.createElement('div');
+    ld.className = 'ladder';
+    ld.dataset.a = aKey;
+    ld.dataset.b = bKey;
+    ld.style.left = (rl.left - w.left + 3) + 'px';
+    ld.style.top = (ru.top - w.top + ru.height * 0.45) + 'px';
+    ld.style.height = (rl.top - ru.top) + 'px';
+    world.appendChild(ld);
+  };
+  bridge('home', '0,0', $('home'), towers[0][0].el);
+  towers.forEach((floors, t) => floors.forEach((c, f) => {
+    if (t < towers.length - 1) bridge(cellKey(t, f), cellKey(t + 1, f), c.el, towers[t + 1][f].el);
+    if (f < floors.length - 1) ladder(c, floors[f + 1]);
+  }));
 }
 
 // まだ行けないマスをタップしたとき
@@ -571,7 +582,7 @@ function rejectTap(floorEl) {
   void floorEl.offsetWidth;
   floorEl.classList.add('nope');
   Sound.sfx.deny();
-  showTip('🚧 まだ行けない！ <b>光っている部屋</b>（上下の階・橋の先）から進もう', 2200);
+  showTip('🚧 まだ行けない！ <b>光っている部屋</b>（橋・はしごでつながった先）から進もう', 2200);
 }
 
 // ============================================================
@@ -832,10 +843,10 @@ function onTap(cell, floorEl) {
   if (state.introPlaying) { skipIntro(); return; }
   if (state.busy) {
     // 移動中のマスを取り終えたら行けるマスなら予約できる
-    if (state.moving && isReachable(cell, exploredSet(state.pendingCell))) queueTap(cell, floorEl);
+    if (state.moving && isReachable(cell, exploredSet(state.pendingCell), state.level.edges)) queueTap(cell, floorEl);
     return;
   }
-  if (!isReachable(cell, exploredSet())) return rejectTap(floorEl);
+  if (!isReachable(cell, exploredSet(), state.level.edges)) return rejectTap(floorEl);
   doTap(cell, floorEl);
 }
 
@@ -852,7 +863,7 @@ function clearQueue() {
 function runQueue() {
   const q = state.queued;
   clearQueue();
-  if (q && !q.cell.cleared && !state.over && !state.busy && isReachable(q.cell, exploredSet())) doTap(q.cell, q.floorEl);
+  if (q && !q.cell.cleared && !state.over && !state.busy && isReachable(q.cell, exploredSet(), state.level.edges)) doTap(q.cell, q.floorEl);
 }
 
 async function doTap(cell, floorEl) {
@@ -890,7 +901,7 @@ async function doTap(cell, floorEl) {
   await wait(moveMs);
   hero.classList.remove('jump');
 
-  const after = applyCell(state.power, cell);
+  let after = applyCell(state.power, cell);
 
   if (cell.type === 'monster') {
     if (cell.boss) await bossWarning(cell);
@@ -924,6 +935,9 @@ async function doTap(cell, floorEl) {
     if (cell.type === 'bomb') shakeStage();
   }
 
+  // 💣の爆風：つながったとなりの敵をまとめて吹き飛ばして吸収
+  if (isBomb(cell)) after += await bombBlast(cell, floorEl);
+
   state.power = after;
   hero.classList.remove('grow');
   void hero.offsetWidth;
@@ -951,6 +965,36 @@ async function doTap(cell, floorEl) {
   if (cell.boss) { clearQueue(); return win(); }
   state.busy = false;
   runQueue();
+}
+
+// 💣の爆風。巻き込んだ敵の数値の合計を返す（1手戻す用に履歴にも残す）
+async function bombBlast(bomb, floorEl) {
+  const byKey = new Map(state.cells.filter(c => !c.cleared && c !== bomb).map(c => [cellKey(c.t, c.f), c]));
+  const targets = blastTargets(bomb, byKey, state.level.edges);
+  state.history[state.history.length - 1].blasted = targets.map(c => c.id);
+  if (!targets.length) return 0;
+  await wait(250);
+  Sound.sfx.critical();
+  flashScreen();
+  zoomPunch(0.05);
+  let sum = 0;
+  targets.forEach(c => {
+    fxBurst(CONFIG.fx.kill, c.el, 1.6);
+    fxBurst(CONFIG.fx.bomb, c.el, 1.3);
+    sparks(worldPos(c.el), 18, ['#fff', '#ffb03b', '#ff5a5a', '#c86bff'], 100);
+    knockOut(c, 1.5);
+    sum += c.value;
+    c.cleared = true;
+    c.el.classList.add('cleared');
+  });
+  popText(`BLAST! ×${targets.length}`, floorEl, false, 'crit');
+  await wait(300);
+  let longest = 0;
+  targets.forEach(c => { longest = Math.max(longest, absorbOrbs(worldPos(c.el), 5)); });
+  await wait(longest - 150);
+  popText('+' + fmt(sum), floorEl, false, 'big');
+  Sound.sfx.hit();
+  return sum;
 }
 
 // ？ボックスを開ける：箱が揺れて、中身が飛び出す
@@ -1005,6 +1049,13 @@ function undo() {
     // ？ボックスは箱に戻す
     if (cell.type === 'mystery') cell.el.replaceChild(makeUnit(cell), cell.el.querySelector('.unit'));
   }
+  // 爆風で吹き飛ばした敵も元に戻す
+  (h.blasted || []).forEach(id => {
+    const c = state.cells.find(x => x.id === id);
+    c.cleared = false;
+    c.el.classList.remove('cleared');
+    c.unit.classList.remove('dying', 'ko', 'hit');
+  });
   state.levelCoins = h.levelCoins || 0;
   state.combo = 0;
   state.power = h.power;
@@ -1129,7 +1180,7 @@ async function lose(cell) {
   await wait(700);
 
   // 今の状態から勝てる手順を探して、最初の1手をヒントにする
-  const plan = bestPlan(state.cells.filter(c => !c.cleared), state.power, 250, exploredSet());
+  const plan = bestPlan(state.cells.filter(c => !c.cleared), state.power, 250, exploredSet(), state.level.edges);
   state.hintCell = plan.score > 0 ? plan.first : null;
   const hint = state.hintCell
     ? `<div class="hint-line">💡 ヒント：先に <b>${describeCell(state.hintCell)}</b> を取ろう</div>`
@@ -1170,7 +1221,7 @@ function showGuides() {
   if (state.lv === 1 && !save.seen.tutorial) {
     // ヒーローにいちばん近い「倒せる敵」を指さす
     const explored = exploredSet();
-    const target = state.cells.filter(c => c.type === 'monster' && c.value < state.power && isReachable(c, explored))
+    const target = state.cells.filter(c => c.type === 'monster' && c.value < state.power && isReachable(c, explored, state.level.edges))
       .sort((a, b) => worldPos(a.el).x - worldPos(b.el).x || a.value - b.value)[0];
     if (target) {
       const hand = $('tutorial-hand');
@@ -1180,25 +1231,27 @@ function showGuides() {
       hand.style.top = p.y + 'px';
       hand.classList.remove('hidden');
       if (p.x > cam.x + cam.viewW - 40) setCamera(p.x - cam.viewW * 0.6, 400);   // 画面外なら見える位置へ
-      showTip('自分より<b class="weak-text">弱い敵（緑の数字）</b>をタップして吸収しよう！<br>進めるのは<b>光っている部屋</b>（上下の階・橋の先）だけ。<b>ボスを倒せばクリア</b>！', 0);
+      showTip('自分より<b class="weak-text">弱い敵（緑の数字）</b>をタップして吸収しよう！<br>進めるのは<b>光っている部屋</b>（橋・はしごでつながった先）だけ。<b>ボスを倒せばクリア</b>！', 0);
       save.seen.tutorial = true;
       save.seen.rule = true;
       save.seen.goal = true;
+      save.seen.maze = true;
       persist();
       return;
     }
   }
   // 以前から遊んでいる人向け：新しい移動ルールのお知らせ（1回だけ）
-  if (!save.seen.rule || !save.seen.goal) {
+  if (!save.seen.rule || !save.seen.goal || !save.seen.maze) {
     save.seen.rule = true;
     save.seen.goal = true;
+    save.seen.maze = true;
     persist();
-    showTip('🌉 <b>新ルール</b>：通った場所のとなり（<b>上下の階</b>・<b>橋でつながった隣の塔</b>）にだけ進めるよ。<br>👑 <b>ボスを倒せばクリア</b>！ 寄り道してパワーを集めるほど★が増える', 8000);
+    showTip('🌉 <b>新ルール</b>：<b>橋・はしご</b>でつながった部屋にだけ進めるよ。<br>👑 <b>ボスを倒せばクリア</b>！ 寄り道してパワーを集めるほど★が増える', 8000);
     return;
   }
   const tips = {
     double: '✨ <b>×2</b> はパワーが2倍！ <b>大きくなってから</b>取るほどお得',
-    bomb: '💣 <b>爆弾</b>はパワーが半分に…<b>避けて回り道</b>するか、弱いうちに踏むか',
+    bomb: '💣 <b>爆弾</b>はパワーが半分になるけど、<b>つながった隣の敵をまとめて吹き飛ばして吸収</b>！ 強い敵のそばで使おう',
     mystery: '❓ <b>？ボックス</b>は開けるまで中身が分からない！ ×2・パワー・金貨…でも爆弾かも？',
     poison: '☠ <b>毒</b>はパワーが減る。弱いうちに取ると<b>力尽きる</b>ので注意！',
   };

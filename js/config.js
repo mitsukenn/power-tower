@@ -17,6 +17,9 @@ const CONFIG = {
   towers: lv => (lv <= 3 ? 3 : Math.min(2 + Math.floor(lv / 3), 7)),
   floorsPerTower: lv => Math.min(2 + Math.floor(lv / 4), 5),
 
+  // 近道（橋・はしご）の多さ。1 = 全部つながっている、小さいほど迷路っぽくなる
+  loopRate: lv => (lv <= 3 ? 1 : Math.max(0.12, 0.6 - (lv - 4) * 0.04)),
+
   // ---- テンポ ----
   speeds: [1, 2],          // ▶▶ ボタンで切り替える速さ
   bossHits: 3,             // ボスは何回斬って倒すか（演出。勝ち負けの判定は他の敵と同じ）
