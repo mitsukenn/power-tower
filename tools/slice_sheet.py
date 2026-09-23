@@ -68,6 +68,39 @@ def slice_sheet(path: Path, out_dir: Path, names: list[str]) -> None:
     print(f"{path.name}: {len(ordered)} 個切り出し（名前 {len(names)} 個）")
 
 
+def slice_grid(path: Path, out_dir: Path, names: list[str], cols: int, rows: int) -> None:
+    """等分グリッドで切り、各マスの中身だけを余白なしで保存する（オーラ等で隣とつながる絵向け）"""
+    img = Image.open(path).convert("RGBA")
+    mask = foreground_mask(img)
+    rgba = np.asarray(img).copy()
+    rgba[..., 3] = np.where(mask, rgba[..., 3], 0)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cw, ch = img.width / cols, img.height / rows
+    for idx in range(cols * rows):
+        r, c = divmod(idx, cols)
+        cell = rgba[int(r * ch):int((r + 1) * ch), int(c * cw):int((c + 1) * cw)].copy()
+        # セルの端に入り込んだ隣のキャラの欠片（小さい塊）を消す
+        lab, n = ndimage.label(ndimage.binary_dilation(cell[..., 3] > 24, iterations=3))
+        if n > 1:
+            sizes = ndimage.sum(np.ones_like(lab), lab, range(1, n + 1))
+            keep = np.isin(lab, [i + 1 for i, s in enumerate(sizes) if s >= sizes.max() * 0.08])
+            cell[..., 3] = np.where(keep, cell[..., 3], 0)
+        ys, xs = np.nonzero(cell[..., 3] > 24)
+        if len(xs) == 0:
+            continue
+        crop = cell[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+        crop = np.pad(crop, ((8, 8), (8, 8), (0, 0)))
+        name = names[idx] if idx < len(names) else f"{path.stem}_{idx + 1:02d}"
+        Image.fromarray(crop).save(out_dir / f"{name}.png", optimize=True)
+    print(f"{path.name}: grid {cols}x{rows}")
+
+
 if __name__ == "__main__":
+    # 4つ目の引数に 3x3 のように書くとグリッド切り
     src, dst, names = sys.argv[1], sys.argv[2], sys.argv[3]
-    slice_sheet(Path(src), Path(dst), [s.strip() for s in names.split(",") if s.strip()])
+    name_list = [s.strip() for s in names.split(",") if s.strip()]
+    if len(sys.argv) > 4:
+        cols, rows = map(int, sys.argv[4].lower().split("x"))
+        slice_grid(Path(src), Path(dst), name_list, cols, rows)
+    else:
+        slice_sheet(Path(src), Path(dst), name_list)

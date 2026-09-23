@@ -245,6 +245,22 @@ html, body {
 .hero.dying { animation: heroDie .6s forwards; }
 
 /* ===== 演出 ===== */
+.fx {
+  position: absolute;
+  z-index: 9;
+  width: calc(var(--floor-h) * 1.3);
+  height: calc(var(--floor-h) * 1.3);
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: fxPop .6s ease-out forwards;
+}
+@keyframes fxPop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.3); }
+  25% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.4); }
+}
+
 .pop {
   position: absolute;
   z-index: 10;

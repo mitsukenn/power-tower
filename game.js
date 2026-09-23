@@ -24,10 +24,33 @@ const CONFIG = {
   potionRatio: [0.2, 0.5],       // 回復薬の量（パワーに対する割合）
   doubleRate: lv => (lv >= 3 ? 0.08 : 0), // ×2 アイテムが出る確率
 
-  monsters: ['👾', '👺', '💀', '🧟', '🦇', '🐺', '👹', '🦂'],
-  boss: '🐉',
-  potion: '🧪',
-  double: '✨',
+  // 見た目。画像パスがあれば画像、なければ絵文字で表示する
+  // 敵は「弱い → 強い」の順。数字が大きい敵ほど後ろのグループから選ばれる
+  monsters: [
+    ['slime', '👾'], ['bat', '🦇'], ['mushroom', '🍄'], ['goblin', '👺'], ['ghost', '👻'],
+    ['skeleton', '💀'], ['zombie', '🧟'], ['wolf', '🐺'], ['spider', '🕷️'], ['mummy', '🧟'],
+    ['scorpion', '🦂'], ['imp', '😈'], ['harpy', '🦅'], ['pirate', '🏴‍☠️'], ['ninja', '🥷'],
+    ['oni', '👹'], ['witch', '🧙'], ['skeleton_mage', '💀'], ['shark_man', '🦈'], ['troll', '👹'],
+    ['fire_spirit', '🔥'], ['thunder_bird', '⚡'], ['yeti', '❄️'], ['golem', '🗿'], ['robot', '🤖'],
+    ['baby_dragon', '🐲'], ['black_knight', '⚔️'],
+  ].map(([name, emoji]) => ({ img: `assets/enemies/${name}.png`, emoji })),
+  bosses: ['dragon', 'demon_king', 'giant_golem', 'kraken']
+    .map(name => ({ img: `assets/bosses/${name}.png`, emoji: '🐉' })),
+  // 演出用エフェクト画像
+  fx: {
+    kill: 'assets/effects/explosion.png',
+    potion: 'assets/effects/heal.png',
+    double: 'assets/effects/level_up.png',
+  },
+  potion: { img: 'assets/items/potion_red.png', emoji: '🧪' },
+  double: { img: 'assets/items/star.png', emoji: '✨' },
+  hero: {
+    idle: 'assets/hero/idle.png',
+    attack: 'assets/hero/attack.png',
+    victory: 'assets/hero/victory.png',
+    damage: 'assets/hero/damage.png',
+    emoji: '🦸',
+  },
 };
 
 const SAVE_KEY = 'powerTower.v1';
@@ -116,16 +139,26 @@ function generateLevel(lv) {
     } else {
       let v = Math.round(p * (lo + rnd() * (hi - lo)));
       v = Math.max(1, Math.min(p - 1, v));
-      const emoji = CONFIG.monsters[Math.floor(rnd() * CONFIG.monsters.length)];
-      seq.push({ type: 'monster', value: v, emoji });
+      seq.push({ type: 'monster', value: v });
       p += v;
     }
   }
 
+  // 敵の見た目：数字の大きさ（log スケール）で弱い〜強いモンスターを割り当てる
+  const logMax = Math.log(p);
+  const list = CONFIG.monsters;
+  seq.forEach(cell => {
+    if (cell.type !== 'monster') return;
+    const t = Math.log(Math.max(1, cell.value)) / logMax;               // 0〜1
+    const band = Math.min(list.length - 1, Math.floor(t * list.length));
+    const jitter = Math.floor(rnd() * 3) - 1;                             // 同じ強さでも少しバラける
+    cell.look = list[Math.max(0, Math.min(list.length - 1, band + jitter))];
+  });
+
   // 最後の敵はボスとして最後の塔のてっぺんに置く
   const boss = seq.pop();
   boss.boss = true;
-  boss.emoji = CONFIG.boss;
+  boss.look = CONFIG.bosses[(lv - 1) % CONFIG.bosses.length];
   shuffle(seq, rnd);
 
   const towers = [];
@@ -164,6 +197,7 @@ function startLevel(lv) {
   $('overlay').classList.add('hidden');
   const hero = $('hero');
   hero.classList.remove('dying', 'fight');
+  setHeroPose('idle');
   hero.style.setProperty('--move-ms', CONFIG.moveMs + 'ms');
 
   buildStage();
@@ -191,23 +225,38 @@ function buildStage() {
   });
 }
 
+// 画像があれば <img>、なければ絵文字。画像の読み込みに失敗したら絵文字に戻す
+function lookHtml(look) {
+  if (look.img) {
+    return `<img class="sprite" src="${look.img}" alt="" draggable="false"
+      onerror="this.outerHTML='<span class=&quot;emoji&quot;>${look.emoji}</span>'">`;
+  }
+  return `<span class="emoji">${look.emoji}</span>`;
+}
+
+// ヒーローの見た目を切り替える（idle / attack / victory / damage）
+function setHeroPose(pose) {
+  const img = $('hero-sprite');
+  if (img && CONFIG.hero[pose]) img.src = CONFIG.hero[pose];
+}
+
 function makeUnit(cell) {
   const u = document.createElement('div');
-  let emoji, label;
+  let look, label;
   if (cell.type === 'monster') {
-    emoji = cell.emoji;
+    look = cell.look;
     label = cell.value;
     u.className = 'unit' + (cell.boss ? ' boss' : '');
   } else if (cell.type === 'potion') {
-    emoji = CONFIG.potion;
+    look = CONFIG.potion;
     label = '+' + cell.value;
     u.className = 'unit item';
   } else {
-    emoji = CONFIG.double;
+    look = CONFIG.double;
     label = '×2';
     u.className = 'unit item';
   }
-  u.innerHTML = `<span class="emoji">${emoji}</span><span class="val">${label}</span>`;
+  u.innerHTML = `${lookHtml(look)}<span class="val">${label}</span>`;
   u.style.setProperty('--bob-delay', (-Math.random() * 1.8).toFixed(2) + 's');
   cell.unit = u;
   return u;
@@ -252,6 +301,22 @@ function updatePower() {
   });
 }
 
+// エフェクト画像をマスの上に一瞬表示する
+function fxBurst(src, floorEl) {
+  if (!src) return;
+  const s = $('stage').getBoundingClientRect();
+  const r = floorEl.getBoundingClientRect();
+  const el = document.createElement('img');
+  el.className = 'fx';
+  el.src = src;
+  el.alt = '';
+  el.style.left = (r.left - s.left + r.width / 2) + 'px';
+  el.style.top = (r.top - s.top + r.height / 2) + 'px';
+  el.onerror = () => el.remove();
+  $('stage').appendChild(el);
+  setTimeout(() => el.remove(), 600);
+}
+
 function popText(text, floorEl, bad) {
   const s = $('stage').getBoundingClientRect();
   const r = floorEl.getBoundingClientRect();
@@ -280,16 +345,19 @@ async function onTap(cell, floorEl) {
 
   if (cell.type === 'monster') {
     hero.classList.add('fight');
+    setHeroPose('attack');
     await wait(CONFIG.fightMs / 2);
     hero.classList.remove('fight');
 
     if (cell.value < state.power) {
       cell.unit.classList.add('dying');
+      fxBurst(CONFIG.fx.kill, floorEl);
       state.power += cell.value;
       popText('+' + cell.value, floorEl);
       beep(660, 80);
       beep(880, 120);
     } else {
+      setHeroPose('damage');
       hero.classList.add('dying');
       popText('LOSE', floorEl, true);
       beep(160, 400, 'sawtooth');
@@ -300,11 +368,13 @@ async function onTap(cell, floorEl) {
     }
   } else if (cell.type === 'potion') {
     cell.unit.classList.add('dying');
+    fxBurst(CONFIG.fx.potion, floorEl);
     state.power += cell.value;
     popText('+' + cell.value, floorEl);
     beep(780, 120, 'sine', 0.08);
   } else {
     cell.unit.classList.add('dying');
+    fxBurst(CONFIG.fx.double, floorEl);
     state.power *= 2;
     popText('×2!', floorEl);
     beep(990, 160, 'sine', 0.08);
@@ -320,8 +390,10 @@ async function onTap(cell, floorEl) {
   state.heroFloorEl = floorEl;
   updatePower();
 
+  setHeroPose('idle');
   if (state.level.towers.flat().every(c => c.cleared)) {
     state.over = true;
+    setHeroPose('victory');
     await wait(250);
     showWin();
   }
