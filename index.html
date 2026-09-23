@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="img/icon-192.png">
   <link rel="apple-touch-icon" href="img/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=20260924c">
+  <link rel="stylesheet" href="style.css?v=20260924d">
 </head>
 <body>
   <div id="app">
@@ -69,20 +69,22 @@
       <img class="title-hero" src="img/hero/king.webp" alt="">
       <div class="title-btns">
         <button class="big-btn" id="start-btn">▶ つづきから</button>
-        <button class="big-btn green" id="select-btn">ステージ選択</button>
+        <button class="big-btn green" id="select-btn">ワールドマップ</button>
         <button class="big-btn gold" id="shop-btn">強化ショップ</button>
       </div>
       <div class="title-coins"><img src="img/items/coins.webp" alt=""><span id="title-coins">0</span></div>
     </section>
 
-    <!-- ===== ステージ選択 ===== -->
-    <section id="select" class="screen hidden">
+    <!-- ===== ワールドマップ（下から上へ進む道） ===== -->
+    <section id="select" class="screen map-screen hidden">
       <div class="screen-head">
         <button class="hud-btn small back-btn" aria-label="戻る">◀</button>
-        <h2>ステージ選択</h2>
+        <h2>ワールドマップ</h2>
+        <div class="title-coins inline"><img src="img/items/coins.webp" alt=""><span id="map-coins">0</span></div>
       </div>
-      <div class="select-list" id="select-list"></div>
+      <div class="map" id="select-list"></div>
     </section>
+    <div id="stage-banner" class="stage-banner hidden"></div>
 
     <!-- ===== ショップ ===== -->
     <section id="shop" class="screen hidden">
@@ -96,9 +98,9 @@
     </section>
   </div>
 
-  <script src="js/config.js?v=20260924c"></script>
-  <script src="js/level.js?v=20260924c"></script>
-  <script src="js/audio.js?v=20260924c"></script>
-  <script src="js/game.js?v=20260924c"></script>
+  <script src="js/config.js?v=20260924d"></script>
+  <script src="js/level.js?v=20260924d"></script>
+  <script src="js/audio.js?v=20260924d"></script>
+  <script src="js/game.js?v=20260924d"></script>
 </body>
 </html>

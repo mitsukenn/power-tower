@@ -226,11 +226,10 @@ function layout() {
   //   塔1本ぶん = マス幅 + 内側の余白12 + 奥行き + 塔の間隔(マス幅×0.35 + 奥行き)
   const perTower = stage.clientWidth * 0.95 / CONFIG.visibleTowers;
   const widthFit = Math.floor((perTower - 12 - depth * 2) / 1.35);
-  // 高さ：階数が少ない序盤はマスを大きくして、画面がスカスカに見えないようにする
-  const maxH = state.level.nFloors <= 2 ? 104 : 84;
-  const heightFit = Math.max(44, Math.min(maxH, Math.floor(avail / state.level.nFloors) - 6));
+  // 高さ：画面の上が空かないよう、部屋を縦長にして塔を高く見せる（横幅の最大1.8倍まで）
+  const heightFit = Math.max(44, Math.min(140, Math.floor(avail / state.level.nFloors) - 6));
   const floorW = Math.max(52, Math.min(112, widthFit, Math.round(heightFit * 1.15)));
-  const floorH = Math.max(44, Math.min(heightFit, Math.round(floorW * 1.1)));
+  const floorH = Math.max(44, Math.min(heightFit, Math.round(floorW * 1.8)));
   const root = document.documentElement.style;
   root.setProperty('--floor-w', floorW + 'px');
   root.setProperty('--floor-h', floorH + 'px');
@@ -381,6 +380,17 @@ function princessSay(text, ms) {
 }
 function hidePrincessSpeech() { $('princess-speech')?.remove(); }
 
+// レベル開始のバナー：「STAGE 11」＋特別ステージならその名前と説明
+function showStageBanner(ms) {
+  const b = $('stage-banner');
+  const t = STAGE_TYPES[state.level.type] || STAGE_TYPES.normal;
+  b.className = 'stage-banner ' + state.level.type;
+  b.innerHTML = `<div class="sb-lv">STAGE ${state.lv}</div>
+    ${t.name ? `<div class="sb-name">${t.name}</div><div class="sb-desc">${t.desc}</div>` : `<div class="sb-desc">${worldOf(state.lv).name}</div>`}`;
+  clearTimeout(showStageBanner.timer);
+  showStageBanner.timer = setTimeout(() => b.classList.add('hidden'), sp(ms));
+}
+
 // レベル開始演出：ステージ全体を見せて、お姫様が「助けて〜！」→ ヒーローのところへカメラが寄る
 // 一度クリアしたレベルは短め。タップでスキップできる
 async function playIntro() {
@@ -396,6 +406,7 @@ async function playIntro() {
   world.style.transformOrigin = '0 100%';
   world.style.transform = `scale(${s})`;
   startPrincessLoop();
+  showStageBanner(replay ? 1300 : 2200);
   await wait(replay ? 250 : 500);
   if (token !== state.introToken) return false;
   setPrincessPose('call');
@@ -417,6 +428,7 @@ function skipIntro() {
   state.introToken++;
   state.introPlaying = false;
   hidePrincessSpeech();
+  $('stage-banner').classList.add('hidden');
   followFloor($('home'), 250);
   state.busy = false;
   showGuides();
@@ -565,6 +577,7 @@ function updateReach() {
     const open = !c.cleared && isReachable(c, explored, state.level.edges);
     c.el.classList.toggle('open', open);
     c.el.classList.toggle('far', !c.cleared && !open);
+    c.el.classList.toggle('fog', state.level.type === 'dark' && !c.cleared && !open);
   });
   document.querySelectorAll('.bridge, .ladder').forEach(b => {
     b.classList.toggle('used', explored.has(b.dataset.a) && explored.has(b.dataset.b));
@@ -1195,6 +1208,7 @@ async function win() {
   const perfect = state.cells.every(c => c.cleared);
   let coins = first ? CONFIG.coins(lv, stars) : Math.ceil(CONFIG.coins(lv, stars) / 3);
   if (perfect) coins = Math.ceil(coins * (1 + CONFIG.perfectBonus));
+  coins = Math.ceil(coins * (state.level.coinRate || 1));
   coins += state.levelCoins;
   save.stars[lv] = Math.max(save.stars[lv] || 0, stars);
   save.best[lv] = Math.max(save.best[lv] || 0, state.power);
@@ -1213,6 +1227,7 @@ async function win() {
     buttons: [
       { text: '次のレベルへ ▶', onClick: () => startLevel(lv + 1) },
       { text: stars < 3 ? 'もう一度（★3を目指す）' : 'もう一度', cls: 'sub', onClick: () => startLevel(lv) },
+      { text: '🗺 マップ', cls: 'sub', onClick: () => { state.introToken++; renderSelect(); } },
     ],
   });
   countUp($('final-power'), state.power, 900);
@@ -1343,33 +1358,59 @@ function renderTitle() {
   $('title-coins').textContent = fmt(save.coins);
 }
 
+// ワールドマップ：下（Lv1）から上へ曲がりくねった道。ワールドごとに背景が変わる
 function renderSelect() {
-  const list = $('select-list');
-  list.innerHTML = '';
+  const map = $('select-list');
+  map.innerHTML = '';
+  $('map-coins').textContent = fmt(save.coins);
   const maxLv = Math.max(WORLDS.length * LEVELS_PER_WORLD, Math.ceil(save.unlocked / LEVELS_PER_WORLD) * LEVELS_PER_WORLD);
-  for (let from = 1; from <= maxLv; from += LEVELS_PER_WORLD) {
+  const STEP = 100;                                   // レベルどうしの縦の間隔(px)
+  const H = LEVELS_PER_WORLD * STEP + 70;             // 1ワールドの高さ
+  const xOf = lv => 50 + Math.sin(lv * 0.85) * 28;    // 道のうねり（横位置 %）
+  // 上から「最後のワールド → 最初のワールド」の順に並べる
+  for (let from = maxLv - LEVELS_PER_WORLD + 1; from >= 1; from -= LEVELS_PER_WORLD) {
     const w = worldOf(from);
     const sec = document.createElement('div');
-    sec.className = 'world-sec';
+    sec.className = 'map-world';
+    sec.style.height = H + 'px';
     sec.style.setProperty('--wbg', `url("${IMG('backgrounds', w.backgrounds[0])}")`);
-    sec.innerHTML = `<h3>${w.name}<small>Lv ${from}〜${from + LEVELS_PER_WORLD - 1}</small></h3><div class="lv-grid"></div>`;
-    const grid = sec.querySelector('.lv-grid');
-    for (let lv = from; lv < from + LEVELS_PER_WORLD; lv++) {
-      const b = document.createElement('button');
+    const yOf = i => H - 45 - i * STEP;               // i = ワールド内の番号（0 が一番下）
+    // 道（下の端から上の端まで、各レベルを通る）
+    const pts = [[xOf(from), H]];
+    for (let i = 0; i < LEVELS_PER_WORLD; i++) pts.push([xOf(from + i), yOf(i)]);
+    pts.push([xOf(from + LEVELS_PER_WORLD), 0]);
+    const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
+    sec.innerHTML = `
+      <svg class="map-road" viewBox="0 0 100 ${H}" preserveAspectRatio="none">
+        <path d="${d}" class="road-edge" vector-effect="non-scaling-stroke"/>
+        <path d="${d}" class="road" vector-effect="non-scaling-stroke"/>
+        <path d="${d}" class="road-dash" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div class="map-sign">${w.name}<small>Lv ${from}〜${from + LEVELS_PER_WORLD - 1}</small></div>`;
+    for (let i = 0; i < LEVELS_PER_WORLD; i++) {
+      const lv = from + i;
+      const type = stageTypeOf(lv);
       const locked = lv > save.unlocked;
       const st = save.stars[lv] || 0;
-      b.className = 'lv-btn' + (locked ? ' locked' : '') + (lv === save.unlocked ? ' current' : '');
-      b.innerHTML = locked ? '🔒' : `${lv}<span class="lv-stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span>`;
+      const b = document.createElement('button');
+      b.className = ['map-node', type, locked ? 'locked' : '', st ? 'cleared' : '', lv === save.unlocked ? 'current' : ''].join(' ');
+      b.style.left = xOf(lv) + '%';
+      b.style.top = yOf(i) + 'px';
+      b.innerHTML = `<span class="num">${locked ? '🔒' : lv}</span>
+        ${STAGE_TYPES[type].icon ? `<span class="type-badge">${STAGE_TYPES[type].icon}</span>` : ''}
+        ${NEW_AT[lv] ? `<span class="new-tag">NEW ${NEW_AT[lv]}</span>` : ''}
+        ${st ? `<span class="node-stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span>` : ''}
+        ${lv === save.unlocked ? `<img class="map-hero" src="${CONFIG.hero('idle')}" alt="">` : ''}`;
       b.disabled = locked;
       b.onclick = () => { Sound.sfx.click(); startLevel(lv); };
-      grid.appendChild(b);
+      sec.appendChild(b);
     }
-    list.appendChild(sec);
+    map.appendChild(sec);
   }
   ['title', 'shop'].forEach(id => $(id).classList.add('hidden'));
   $('select').classList.remove('hidden');
   $('app').dataset.screen = 'select';
-  const cur = list.querySelector('.current');
+  const cur = map.querySelector('.current');
   if (cur) cur.scrollIntoView({ block: 'center' });
 }
 
@@ -1453,7 +1494,7 @@ function init() {
   $('select-btn').onclick = () => { Sound.sfx.click(); renderSelect(); };
   $('shop-btn').onclick = () => { Sound.sfx.click(); renderShop(); };
   document.querySelectorAll('.back-btn').forEach(b => { b.onclick = () => { Sound.sfx.click(); showScreen('title'); }; });
-  $('home-btn').onclick = () => { if (!state.moving) { state.introToken++; showScreen('title'); } };
+  $('home-btn').onclick = () => { if (!state.moving) { state.introToken++; renderSelect(); } };
   $('retry-btn').onclick = () => { if (!state.moving) startLevel(state.lv); };
   $('undo-btn').onclick = undo;
   $('mute-btn').onclick = () => setMuted(!save.muted);

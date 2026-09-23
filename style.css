@@ -14,6 +14,8 @@
   --floor-w: 88px;
   --depth: 14px;        /* 塔の奥行き（3D感の強さ） */
   --bg-img: none;       /* game.js が背景画像をセットする */
+  /* キャラの大きさ：部屋の高さと幅の小さいほうに合わせる（縦長の部屋でもはみ出さない） */
+  --u: min(calc(var(--floor-h) * .72), calc(var(--floor-w) * .92));
 }
 
 * { box-sizing: border-box; }
@@ -360,18 +362,18 @@ html, body {
   z-index: -1;
 }
 .unit .emoji {
-  font-size: calc(var(--floor-h) * .48);
+  font-size: calc(var(--u) * .66);
   filter: drop-shadow(0 3px 2px rgba(0, 0, 0, .35));
 }
 .unit .sprite {
   display: block;
-  width: calc(var(--floor-h) * .72);
-  height: calc(var(--floor-h) * .72);
+  width: var(--u);
+  height: var(--u);
   object-fit: contain;
   filter: drop-shadow(0 4px 3px rgba(0, 0, 0, .4));
 }
-.unit.boss .sprite { width: calc(var(--floor-h) * .86); height: calc(var(--floor-h) * .86); }
-.unit.boss .emoji { font-size: calc(var(--floor-h) * .6); }
+.unit.boss .sprite { width: calc(var(--u) * 1.18); height: calc(var(--u) * 1.18); }
+.unit.boss .emoji { font-size: calc(var(--u) * .83); }
 
 /* 待機中はふわふわ動く */
 .floor:not(.cleared) .unit .emoji,
@@ -382,7 +384,7 @@ html, body {
 
 .unit .val {
   margin-top: -2px;
-  font-size: calc(var(--floor-h) * .22);
+  font-size: calc(var(--u) * .3);
   font-weight: 900;
   padding: 2px 7px;
   border-radius: 9px;
@@ -992,11 +994,11 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: calc(var(--floor-h) * .56);
-  height: calc(var(--floor-h) * .56);
+  width: calc(var(--u) * .78);
+  height: calc(var(--u) * .78);
   margin-bottom: 2px;
   border-radius: 8px;
-  font-size: calc(var(--floor-h) * .38);
+  font-size: calc(var(--u) * .53);
   font-weight: 900;
   color: #fff;
   text-shadow: 0 2px 0 #8a4b00, 0 0 6px rgba(255, 255, 255, .8);
@@ -1069,3 +1071,140 @@ html, body {
 }
 @keyframes speechPop { from { transform: translate(-50%, calc(-100% - 12px)) scale(0); } }
 @keyframes speechWiggle { 50% { transform: translate(-50%, calc(-100% - 16px)) rotate(-2deg); } }
+
+/* ===== ステージ開始バナー ===== */
+.stage-banner {
+  position: absolute;
+  top: 34%;
+  left: 0;
+  right: 0;
+  z-index: 13;
+  padding: 10px 16px 12px;
+  text-align: center;
+  color: #fff;
+  background: linear-gradient(90deg, transparent, rgba(20, 40, 90, .85) 15%, rgba(20, 40, 90, .85) 85%, transparent);
+  pointer-events: none;
+  animation: bannerIn .45s cubic-bezier(.3, 1.4, .5, 1);
+}
+.stage-banner.hidden { display: none; }
+.stage-banner.treasure { background: linear-gradient(90deg, transparent, rgba(150, 100, 0, .9) 15%, rgba(150, 100, 0, .9) 85%, transparent); }
+.stage-banner.boss, .stage-banner.rush { background: linear-gradient(90deg, transparent, rgba(140, 0, 0, .88) 15%, rgba(140, 0, 0, .88) 85%, transparent); }
+.stage-banner.dark { background: linear-gradient(90deg, transparent, rgba(30, 10, 60, .92) 15%, rgba(30, 10, 60, .92) 85%, transparent); }
+.sb-lv { font-size: 34px; font-weight: 900; letter-spacing: .08em; color: #ffd23f; text-shadow: 0 3px 0 #8f6200, 0 0 12px rgba(0, 0, 0, .5); }
+.sb-name { font-size: 20px; font-weight: 900; margin-top: 2px; }
+.sb-desc { font-size: 13px; font-weight: 700; opacity: .95; }
+@keyframes bannerIn { from { transform: translateX(-100%); } }
+#app:not([data-screen="game"]) .stage-banner { display: none; }
+
+/* ===== 暗闇ステージ：行けない部屋は中身が見えない ===== */
+.floor.far.fog { filter: none; background: radial-gradient(circle at 50% 40%, #3a3160, #120f22 75%); box-shadow: inset 0 0 0 2px rgba(160, 140, 255, .25), inset 0 8px 12px rgba(0, 0, 0, .6); }
+.floor.fog .unit { visibility: hidden; }
+.floor.fog::after {
+  content: '?';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--u) * .7);
+  font-weight: 900;
+  color: rgba(200, 190, 255, .55);
+  text-shadow: 0 0 10px rgba(140, 120, 255, .6);
+}
+
+/* ===== ワールドマップ ===== */
+.map-screen { background: #0f1f3a; }
+.map { width: 100%; }
+.map-world {
+  position: relative;
+  width: 100%;
+  background: linear-gradient(rgba(10, 20, 50, .15), rgba(10, 20, 50, .35)), var(--wbg) center / cover;
+  box-shadow: inset 0 12px 20px -12px rgba(0, 0, 0, .7);
+}
+.map-road { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.map-road path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.map-road .road-edge { stroke: #6b4a22; stroke-width: 30px; }
+.map-road .road { stroke: #e9c98a; stroke-width: 24px; }
+.map-road .road-dash { stroke: #fff6dc; stroke-width: 3px; stroke-dasharray: 8 12; }
+.map-sign {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  border-radius: 10px;
+  background: linear-gradient(#a8733f, #7a4f26);
+  border: 3px solid #4f3218;
+  font-size: 16px;
+  font-weight: 900;
+  color: #fff6dc;
+  white-space: nowrap;
+  box-shadow: 0 4px 0 #3a2410, 0 8px 12px rgba(0, 0, 0, .4);
+  text-shadow: 0 2px 0 #3a2410;
+}
+.map-sign small { margin-left: 8px; font-size: 11px; opacity: .85; }
+.map-node {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  transform: translate(-50%, -50%);
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #8fc0ff, #2458b8);
+  box-shadow: 0 5px 0 #173a7a, 0 8px 12px rgba(0, 0, 0, .45);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  cursor: pointer;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .35);
+}
+.map-node.cleared { background: radial-gradient(circle at 35% 30%, #8ff0a0, #1f9d3a); box-shadow: 0 5px 0 #0f5e21, 0 8px 12px rgba(0, 0, 0, .45); }
+.map-node.boss { width: 76px; height: 76px; background: radial-gradient(circle at 35% 30%, #ff9a9a, #b31d1d); box-shadow: 0 5px 0 #6d0e0e, 0 0 16px rgba(255, 60, 60, .8); }
+.map-node.treasure { background: radial-gradient(circle at 35% 30%, #ffe98a, #e39b00); box-shadow: 0 5px 0 #8f6200, 0 0 14px rgba(255, 210, 63, .8); }
+.map-node.locked { background: radial-gradient(circle at 35% 30%, #b8bcc6, #6b7280); box-shadow: 0 5px 0 #3f444d; border-color: #d8dbe2; cursor: default; font-size: 18px; }
+.map-node.current { animation: nodePulse 1s ease-in-out infinite; z-index: 2; }
+@keyframes nodePulse {
+  50% { transform: translate(-50%, -50%) scale(1.12); box-shadow: 0 5px 0 #173a7a, 0 0 22px 6px rgba(255, 230, 120, .95); }
+}
+.type-badge {
+  position: absolute;
+  top: -10px;
+  right: -12px;
+  font-size: 20px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .5));
+}
+.new-tag {
+  position: absolute;
+  top: -14px;
+  left: -26px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #ff3b6b;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+  transform: rotate(-12deg);
+  box-shadow: 0 2px 0 #a3163c;
+}
+.node-stars {
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  color: #ffd23f;
+  white-space: nowrap;
+  letter-spacing: -1px;
+  text-shadow: 0 1px 2px #000, 0 0 3px #000;
+}
+.map-hero {
+  position: absolute;
+  bottom: 44px;
+  left: 50%;
+  width: 62px;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 6px 4px rgba(0, 0, 0, .5));
+  animation: heroHop .9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes heroHop { 50% { transform: translateX(-50%) translateY(-10px); } }

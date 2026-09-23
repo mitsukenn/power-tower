@@ -14,6 +14,7 @@
 
 - 素の HTML / CSS / JavaScript。ビルド・依存パッケージなし。`<script>` を順番に読み込む（config → level → audio → game）。
 - `js/config.js` の `CONFIG` と `WORLDS` に調整値を集約。バランス調整はまずここを触る。
+- ステージの種類は `stageTypeOf(lv)`（normal / treasure / boss / rush / dark）、種類ごとの生成パラメータは `levelParams(lv)`。マップの NEW 表示は `NEW_AT`。
 - 移動ルール：部屋どうしは `level.edges`（橋・はしご）でつながった所だけ行き来できる。通ったエリア（'home'＋クリア済み）とつながった部屋にだけ進める（`isReachable(cell, explored, edges)` / `linkedNeighbors`）。
 - 💣 は ÷2 のあと、つながった隣の敵（ボス以外）を強さに関係なく吹き飛ばして吸収する（`blastTargets` / `takeCell`）。
 - `js/level.js` の `generateLevel(lv)` は、スタートから部屋を1つずつ広げて通路（塔の中は全部はしご、塔の間は `CONFIG.bridgesPerGap` 本の橋を決まった階に）を作り、スタートから通路にそって部屋を広げた順を「正解の順番」として数値を決める。最後の隙間はボスの階に橋を架けない。💣・☠ はボスへの幹の道に優先して置く。爆風で順番が変わることもあるので、最後に `bestScore` で解けるか確かめ、解けなければ作り直す → 必ずクリア可能。この性質は壊さないこと。

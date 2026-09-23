@@ -107,6 +107,7 @@ function buildLevel(lv, attempt, allBridges) {
   const nFloors = CONFIG.floorsPerTower(lv);
   const total = nTowers * nFloors;
   const bossKey = cellKey(nTowers - 1, nFloors - 1);
+  const P = levelParams(lv);   // ステージの種類ごとのパラメータ
 
   // 1) 通路
   const edges = new Set([edgeKey('home', '0,0')]);
@@ -158,11 +159,11 @@ function buildLevel(lv, attempt, allBridges) {
       if (cand.length) kinds[cand[Math.floor(rnd() * cand.length)]] = kind;
     }
   };
-  placeIn('bomb', CONFIG.bombs(lv), 1, Math.floor(total * 0.8), true);
-  placeIn('poison', CONFIG.poisons(lv), Math.floor(total * 0.5), total - 2, true);
-  placeIn('mystery', CONFIG.mysteries(lv), 1, total - 2, false);
-  placeIn('double', CONFIG.doubles(lv), Math.floor(total * 0.55), total - 2, false);
-  placeIn('potion', Math.round(total * CONFIG.potionRate), 0, total - 2, false);
+  placeIn('bomb', P.bombs, 1, Math.floor(total * 0.8), true);
+  placeIn('poison', P.poisons, Math.floor(total * 0.5), total - 2, true);
+  placeIn('mystery', P.mysteries, 1, total - 2, false);
+  placeIn('double', P.doubles, Math.floor(total * 0.55), total - 2, false);
+  placeIn('potion', Math.round(total * P.potionRate), 0, total - 2, false);
 
   // 4) 正解の順番どおりに進めながら数値を決める
   const start = CONFIG.startPower;
@@ -170,7 +171,7 @@ function buildLevel(lv, attempt, allBridges) {
   const seq = kinds.map(kind => {
     kind = kind || 'monster';
     if (kind === 'monster' || kind === 'boss') {
-      const tough = kind === 'boss' || rnd() < CONFIG.toughRate(lv);
+      const tough = kind === 'boss' || rnd() < P.toughRate;
       const range = kind === 'boss' ? CONFIG.bossRatio : tough ? CONFIG.toughRatio(lv) : CONFIG.weakRatio;
       const v = Math.max(1, Math.min(p - 1, Math.round(p * between(rnd, range))));
       p += v;
@@ -182,7 +183,7 @@ function buildLevel(lv, attempt, allBridges) {
       return { type: 'potion', value: v };
     }
     if (kind === 'mystery') {
-      const table = CONFIG.mysteryTable;
+      const table = P.mysteryTable;
       let r = rnd() * table.reduce((s, [, w]) => s + w, 0);
       const content = (table.find(([, w]) => (r -= w) < 0) || table[0])[0];
       const cell = { type: 'mystery', content };
@@ -219,7 +220,7 @@ function buildLevel(lv, attempt, allBridges) {
   });
   let id = 0;
   towers.forEach(floors => floors.forEach(c => { c.id = id++; }));
-  return { towers, nFloors, edges, intended };
+  return { towers, nFloors, edges, intended, type: P.type, coinRate: P.coinRate };
 }
 
 // ============================================================

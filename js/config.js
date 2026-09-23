@@ -181,3 +181,53 @@ const WORLDS = [
 
 const LEVELS_PER_WORLD = 10;
 const worldOf = lv => WORLDS[Math.min(WORLDS.length - 1, Math.floor((lv - 1) / LEVELS_PER_WORLD))];
+
+// ============================================================
+//  ステージの種類（進むほど変化をつける）
+//  treasure: 宝物庫（ご褒美ステージ）/ boss: ワールドボス / rush: 強敵ラッシュ / dark: 暗闇 / normal
+// ============================================================
+const STAGE_TYPES = {
+  normal: { name: '', icon: '' },
+  boss: { name: '👑 ワールドボス', icon: '👑', desc: '特大ボスが待ちかまえている！' },
+  treasure: { name: '💎 宝物庫ステージ', icon: '💎', desc: '罠なし！お宝がいっぱい。金貨2倍' },
+  rush: { name: '🔥 強敵ラッシュ', icon: '🔥', desc: '強い敵が多い！ 💣の爆風をうまく使おう' },
+  dark: { name: '🌑 暗闇ステージ', icon: '🌑', desc: '行ける部屋の先は、近づくまで見えない' },
+};
+
+function stageTypeOf(lv) {
+  const d = lv % LEVELS_PER_WORLD;
+  if (d === 0) return 'boss';
+  if (d === 5) return 'treasure';
+  if (lv >= 18 && d === 8) return 'rush';
+  if (lv >= 15 && (d === 3 || d === 7)) return 'dark';
+  return 'normal';
+}
+
+// 新しい仕掛けが初めて出るレベル（マップに NEW を出す）
+const NEW_AT = { 3: '×2', 4: '？', 5: '💣', 8: '☠', 13: '🌉', 17: '🌑', 18: '🔥' };
+
+// ステージの種類ごとの生成パラメータ（CONFIG の値を上書き）
+function levelParams(lv) {
+  const type = stageTypeOf(lv);
+  const P = {
+    type,
+    toughRate: CONFIG.toughRate(lv),
+    potionRate: CONFIG.potionRate,
+    bombs: CONFIG.bombs(lv),
+    poisons: CONFIG.poisons(lv),
+    doubles: CONFIG.doubles(lv),
+    mysteries: CONFIG.mysteries(lv),
+    mysteryTable: CONFIG.mysteryTable,
+    coinRate: 1,
+  };
+  if (type === 'treasure') {
+    Object.assign(P, {
+      toughRate: 0.05, potionRate: 0.3, bombs: 0, poisons: 0,
+      doubles: P.doubles + 1, mysteries: P.mysteries + 2,
+      mysteryTable: CONFIG.mysteryTable.filter(([c]) => c === 'double' || c === 'plus' || c === 'coin'),
+      coinRate: 2,
+    });
+  }
+  if (type === 'rush') Object.assign(P, { toughRate: Math.min(0.6, P.toughRate + 0.25), bombs: P.bombs + 1 });
+  return P;
+}
