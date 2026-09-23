@@ -62,6 +62,7 @@ const CONFIG = {
   ],
 
   // ---- カメラ ----
+  visibleTowers: 3,        // スマホの画面に塔が何本ぐらい見えるようにするか（マスの大きさが決まる）
   cameraLead: 0.38,        // ヒーローを画面の左から何割の位置に映すか
   parallaxFar: 0.15,       // 遠景（背景画像）の動く速さ（1 = ステージと同じ）
   parallaxMid: 0.5,        // 中景（雲・木など）の動く速さ
@@ -116,6 +117,10 @@ const CONFIG = {
     confetti: IMG('effects', 'confetti'),
   },
   hero: name => IMG('hero', name),
+  // お姫様：檻の中では call / cry / pray を順に切り替えて動いて見せる。助けたら joy
+  princess: pose => IMG('allies', `princess_${pose}`),
+  princessLoop: ['call', 'cry', 'pray'],
+  princessMs: 1300,
 };
 
 // ============================================================

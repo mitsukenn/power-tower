@@ -100,6 +100,7 @@ function startLevel(lv) {
   $('overlay').classList.add('hidden');
   hideTutorial();
   hideTip();
+  hidePrincessSpeech();
   setBackground(lv);
   applyWorldLook(lv);
 
@@ -171,7 +172,9 @@ function buildStage() {
       const cap = document.createElement('div');
       cap.className = 'captive';
       cap.id = 'captive';
-      cap.innerHTML = `<img class="princess" src="${IMG('allies', 'princess')}" alt="">
+      // 新しいポーズ画像が無いときは元のお姫様の絵を使う
+      cap.innerHTML = `<img class="princess" id="princess-img" src="${CONFIG.princess('call')}" alt=""
+          onerror="this.onerror=null;this.src='${IMG('allies', 'princess')}'">
         <img class="cage" src="${IMG('stage', 'cage')}" alt="">`;
       tower.appendChild(cap);
     }
@@ -218,15 +221,20 @@ function layout() {
   if (!state.level) return;
   const stage = $('stage');
   const avail = stage.clientHeight - 34 - 130 - 20;   // 地面・HUD＋ミニマップ・上の余白を除いた高さ
-  // 階数が少ない序盤はマスを大きくして、画面がスカスカに見えないようにする
-  const maxH = state.level.nFloors <= 2 ? 104 : 84;
-  const floorH = Math.max(44, Math.min(maxH, Math.floor(avail / state.level.nFloors) - 6));
-  const floorW = Math.max(60, Math.min(112, Math.round(floorH * 1.15)));
   const depth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--depth')) || 0;
+  // 横幅：画面に塔が CONFIG.visibleTowers 本ぐらい見える大きさ
+  //   塔1本ぶん = マス幅 + 内側の余白12 + 奥行き + 塔の間隔(マス幅×0.35 + 奥行き)
+  const perTower = stage.clientWidth * 0.95 / CONFIG.visibleTowers;
+  const widthFit = Math.floor((perTower - 12 - depth * 2) / 1.35);
+  // 高さ：階数が少ない序盤はマスを大きくして、画面がスカスカに見えないようにする
+  const maxH = state.level.nFloors <= 2 ? 104 : 84;
+  const heightFit = Math.max(44, Math.min(maxH, Math.floor(avail / state.level.nFloors) - 6));
+  const floorW = Math.max(52, Math.min(112, widthFit, Math.round(heightFit * 1.15)));
+  const floorH = Math.max(44, Math.min(heightFit, Math.round(floorW * 1.1)));
   const root = document.documentElement.style;
   root.setProperty('--floor-w', floorW + 'px');
   root.setProperty('--floor-h', floorH + 'px');
-  root.setProperty('--tower-gap', Math.round(floorW * 0.45 + depth) + 'px');
+  root.setProperty('--tower-gap', Math.round(floorW * 0.35 + depth) + 'px');
   measureWorld();
 }
 
@@ -332,19 +340,72 @@ function buildDecor(lv) {
   }
 }
 
-// レベル開始演出：まずボスの塔（お姫様）を見せてから、ヒーローのところへカメラが戻る
+// ============================================================
+//  お姫様：檻の中で「呼ぶ・泣く・祈る」を切り替えて動いて見せる。セリフの吹き出し
+// ============================================================
+function setPrincessPose(pose) {
+  const img = $('princess-img');
+  if (img) img.src = CONFIG.princess(pose);
+}
+
+function startPrincessLoop() {
+  clearInterval(state.princessTimer);
+  let i = 0;
+  setPrincessPose(CONFIG.princessLoop[0]);
+  state.princessTimer = setInterval(() => {
+    i = (i + 1) % CONFIG.princessLoop.length;
+    setPrincessPose(CONFIG.princessLoop[i]);
+  }, CONFIG.princessMs);
+}
+
+// 吹き出し：ステージが拡大・縮小しても檻の上に付いていくよう、表示中は毎フレーム位置を合わせる
+function princessSay(text, ms) {
+  const cap = $('captive');
+  if (!cap) return;
+  hidePrincessSpeech();
+  const bubble = document.createElement('div');
+  bubble.className = 'speech';
+  bubble.id = 'princess-speech';
+  bubble.textContent = text;
+  $('stage').appendChild(bubble);
+  const follow = () => {
+    if (!bubble.isConnected) return;
+    const s = $('stage').getBoundingClientRect();
+    const r = cap.getBoundingClientRect();
+    bubble.style.left = Math.min(s.width - 70, Math.max(70, r.left - s.left + r.width / 2)) + 'px';
+    bubble.style.top = Math.max(110, r.top - s.top) + 'px';
+    requestAnimationFrame(follow);
+  };
+  follow();
+  if (ms) setTimeout(() => bubble.remove(), sp(ms));
+}
+function hidePrincessSpeech() { $('princess-speech')?.remove(); }
+
+// レベル開始演出：ステージ全体を見せて、お姫様が「助けて〜！」→ ヒーローのところへカメラが寄る
 // 一度クリアしたレベルは短め。タップでスキップできる
 async function playIntro() {
   const token = ++state.introToken;
-  if (cam.max <= 0) { setCamera(0); return true; }
   const replay = !!save.stars[state.lv];
+  const world = $('world');
   state.busy = true;
   state.introPlaying = true;
-  setCamera(cam.max, 0);
-  await wait(replay ? 300 : 800);
+  setCamera(0, 0);
+  // 全体が画面に収まるように縮小（地面を基準に）
+  const s = Math.min(1, cam.viewW / world.offsetWidth);
+  world.style.transition = 'none';
+  world.style.transformOrigin = '0 100%';
+  world.style.transform = `scale(${s})`;
+  startPrincessLoop();
+  await wait(replay ? 250 : 500);
   if (token !== state.introToken) return false;
+  setPrincessPose('call');
+  princessSay('助けて〜！', replay ? 1100 : 2000);
+  Sound.sfx.help();
+  await wait(replay ? 900 : 1700);
+  if (token !== state.introToken) return false;
+  startPrincessLoop();
   const ms = replay ? 650 : CONFIG.introMs;
-  followFloor($('home'), ms);
+  followFloor($('home'), ms);    // 縮小 → 通常の大きさでヒーローへ
   await wait(ms);
   if (token !== state.introToken) return false;
   state.introPlaying = false;
@@ -355,6 +416,7 @@ async function playIntro() {
 function skipIntro() {
   state.introToken++;
   state.introPlaying = false;
+  hidePrincessSpeech();
   followFloor($('home'), 250);
   state.busy = false;
   showGuides();
@@ -1116,8 +1178,11 @@ async function win() {
   const cap = $('captive');
   if (cap) {
     followFloor(state.cells[state.cells.length - 1].el, 400);
+    clearInterval(state.princessTimer);
+    setPrincessPose('joy');
     cap.classList.add('freed');
     fxBurst(CONFIG.fx.heart, state.cells[state.cells.length - 1].el, 1.6);
+    princessSay('ありがとう！', 1600);
   }
   Sound.sfx.win();
   confetti();
