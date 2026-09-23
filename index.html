@@ -14,19 +14,26 @@
       <button id="retry-btn" class="hud-btn" aria-label="やり直す">↻</button>
     </header>
 
+    <!-- stage = スマホに映る「窓」。world = 横に広いステージ本体。カメラで world を動かす -->
     <main id="stage">
-      <div class="home-tower">
-        <div class="floor home" id="home"></div>
+      <div id="bg-far" class="layer"></div>
+      <div id="bg-mid" class="layer"></div>
+      <div id="world">
+        <div class="home-tower">
+          <div class="floor home" id="home"></div>
+        </div>
+        <div id="enemies" class="enemies"></div>
+        <div id="hero" class="unit hero">
+          <img class="sprite" id="hero-sprite" src="assets/hero/idle.png" alt="" draggable="false"
+            onerror="this.outerHTML='<span class=&quot;emoji&quot;>🦸</span>'">
+          <span class="val" id="hero-power">10</span>
+        </div>
       </div>
-      <div id="enemies" class="enemies"></div>
-      <div id="hero" class="unit hero">
-        <img class="sprite" id="hero-sprite" src="assets/hero/idle.png" alt="" draggable="false"
-          onerror="this.outerHTML='<span class=&quot;emoji&quot;>🦸</span>'">
-        <span class="val" id="hero-power">10</span>
-      </div>
+      <button id="arrow-left" class="edge-arrow left hidden" aria-label="左を見る">◀</button>
+      <button id="arrow-right" class="edge-arrow right hidden" aria-label="右を見る">▶</button>
     </main>
 
-    <p class="hint" id="hint">自分より弱い敵をタップして吸収しよう！</p>
+    <p class="hint" id="hint">弱い敵をタップ！ スワイプでステージを見渡せるよ</p>
 
     <div id="overlay" class="overlay hidden">
       <div class="panel">

@@ -9,9 +9,15 @@ const CONFIG = {
   moveMs: 320,             // ヒーローの移動時間(ms)
   fightMs: 380,            // 戦闘演出の時間(ms)
 
-  // 敵の塔の数と、1本あたりの階数
-  towers: lv => Math.min(1 + Math.floor((lv + 1) / 3), 3),
-  floorsPerTower: lv => Math.min(2 + Math.floor(lv / 2), 6),
+  // 敵の塔の数と、1本あたりの階数。ステージは横に広く、カメラで追いかけるので塔は多めでOK
+  towers: lv => Math.min(2 + Math.floor(lv / 2), 8),
+  floorsPerTower: lv => Math.min(2 + Math.floor(lv / 3), 5),
+
+  // カメラ
+  cameraLead: 0.38,        // ヒーローを画面の左から何割の位置に映すか
+  parallaxFar: 0.15,       // 遠景（背景画像）の動く速さ（1 = ステージと同じ）
+  parallaxMid: 0.5,        // 中景（雲・木など）の動く速さ
+  introMs: 1400,           // レベル開始時、ボスからヒーローへカメラが戻る時間
 
   // 敵の強さ = その時点で到達しうるパワー × [下限, 上限] の割合
   // 上限が 1 に近いほどギリギリの戦いになる
@@ -44,6 +50,15 @@ const CONFIG = {
     'meadow_castle', 'sunset_castle', 'night_castle', 'forest', 'desert', 'snow',
     'volcano', 'beach', 'sky', 'cave', 'demon_castle',
   ].map(name => `assets/backgrounds/${name}.jpg`),
+  // 中景の飾り（assets/stage のファイル名、大きさ[最小,最大]、空に浮かぶか）
+  decor: [
+    { name: 'cloud', size: [90, 150], sky: true },
+    { name: 'cloud', size: [70, 120], sky: true },
+    { name: 'tree', size: [80, 130] },
+    { name: 'rock', size: [50, 80] },
+    { name: 'torch', size: [30, 44] },
+    { name: 'fence', size: [70, 100] },
+  ],
   // 演出用エフェクト画像
   fx: {
     kill: 'assets/effects/explosion.png',
@@ -199,6 +214,7 @@ function startLevel(lv) {
   state.power = CONFIG.startPower;
   state.level = generateLevel(lv);
   state.busy = false;
+  state.moving = false;
   state.over = false;
 
   $('level').textContent = lv;
@@ -211,9 +227,26 @@ function startLevel(lv) {
 
   buildStage();
   layout();
+  buildDecor(lv);
+  $('home').classList.remove('cleared');
   state.heroFloorEl = $('home');
   placeHero(state.heroFloorEl, true);
   updatePower();
+  playIntro();
+}
+
+// レベル開始演出：まずボスの塔を見せてから、ヒーローのところへカメラが戻る
+async function playIntro() {
+  const token = state.introToken = (state.introToken || 0) + 1;
+  if (cam.max <= 0) { setCamera(0); return; }
+  state.busy = true;
+  setCamera(cam.max, 0);
+  await wait(700);
+  if (token !== state.introToken) return;
+  followFloor($('home'), CONFIG.introMs);
+  await wait(CONFIG.introMs);
+  if (token !== state.introToken) return;
+  state.busy = false;
 }
 
 // 背景画像を読み込めたときだけ差し替える（無ければ空のグラデーションのまま）
@@ -264,11 +297,11 @@ function makeUnit(cell) {
   let look, label;
   if (cell.type === 'monster') {
     look = cell.look;
-    label = cell.value;
+    label = fmt(cell.value);
     u.className = 'unit' + (cell.boss ? ' boss' : '');
   } else if (cell.type === 'potion') {
     look = CONFIG.potion;
-    label = '+' + cell.value;
+    label = '+' + fmt(cell.value);
     u.className = 'unit item';
   } else {
     look = CONFIG.double;
@@ -281,38 +314,148 @@ function makeUnit(cell) {
   return u;
 }
 
-// 塔の数・階数に合わせてマスの大きさを決める
+// マスの大きさは「画面の高さ」だけで決める（横は広いステージなので詰め込まない）
 function layout() {
   if (!state.level) return;
   const stage = $('stage');
-  const nT = state.level.towers.length + 1; // 自分の塔を含む
+  const avail = stage.clientHeight - 34 - 90 - 20;   // 地面・HUD・上の余白を除いた高さ
+  const floorH = Math.max(44, Math.min(84, Math.floor(avail / state.level.nFloors) - 6));
+  const floorW = Math.max(60, Math.min(96, Math.round(floorH * 1.15)));
   const depth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--depth')) || 0;
-  // 左右の余白・塔どうしの間隔・各塔の内側余白・3Dの側面ぶんを差し引く
-  const w = stage.clientWidth - 24 - depth - (8 + depth) * (nT - 1) - nT * 12 - 16;
-  const h = stage.clientHeight - 70;
-  const floorW = Math.max(44, Math.min(96, Math.floor(w / nT)));
-  const floorH = Math.max(40, Math.min(80, Math.floor(h / state.level.nFloors) - 4));
   const root = document.documentElement.style;
   root.setProperty('--floor-w', floorW + 'px');
   root.setProperty('--floor-h', floorH + 'px');
+  root.setProperty('--tower-gap', Math.round(floorW * 0.45 + depth) + 'px');
+  measureWorld();
+}
+
+// world 内での要素の中心座標
+function worldPos(el) {
+  const w = $('world').getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  return { x: r.left - w.left + r.width / 2, y: r.top - w.top + r.height / 2, top: r.top - w.top };
 }
 
 function placeHero(floorEl, instant) {
   const hero = $('hero');
-  const s = $('stage').getBoundingClientRect();
-  const r = floorEl.getBoundingClientRect();
+  const p = worldPos(floorEl);
   if (instant) hero.style.transition = 'none';
-  hero.style.left = (r.left - s.left + r.width / 2) + 'px';
-  hero.style.top = (r.top - s.top + r.height / 2) + 'px';
+  hero.style.left = p.x + 'px';
+  hero.style.top = p.y + 'px';
   if (instant) {
     void hero.offsetWidth; // transition を無効にしたまま位置を確定させる
     hero.style.transition = '';
   }
 }
 
+// ============================================================
+//  カメラ（横に広いステージの一部だけを画面に映す）
+// ============================================================
+const cam = { x: 0, max: 0, viewW: 0 };
+
+function measureWorld() {
+  cam.viewW = $('stage').clientWidth;
+  cam.max = Math.max(0, $('world').offsetWidth - cam.viewW);
+  // 奥のレイヤーほど幅を狭くし、ゆっくり動かす
+  $('bg-far').style.width = (cam.viewW + cam.max * CONFIG.parallaxFar) + 'px';
+  $('bg-mid').style.width = (cam.viewW + cam.max * CONFIG.parallaxMid) + 'px';
+}
+
+function setCamera(x, ms = 0) {
+  cam.x = Math.max(0, Math.min(cam.max, x));
+  const t = ms ? `transform ${ms}ms cubic-bezier(.25,.8,.3,1)` : 'none';
+  [['world', 1], ['bg-mid', CONFIG.parallaxMid], ['bg-far', CONFIG.parallaxFar]].forEach(([id, k]) => {
+    const el = $(id);
+    el.style.transition = t;
+    el.style.transform = `translateX(${-cam.x * k}px)`;
+  });
+  updateArrows();
+}
+
+// 指定したマスが画面の左寄り（cameraLead）に来るようにカメラを動かす
+function followFloor(floorEl, ms) {
+  setCamera(worldPos(floorEl).x - cam.viewW * CONFIG.cameraLead, ms);
+}
+
+// 画面の外に残っている敵の方向に矢印を出す
+function updateArrows() {
+  if (!state.level) return;
+  let left = false, right = false;
+  state.level.towers.flat().forEach(c => {
+    if (c.cleared || !c.el) return;
+    const x = c.el.offsetParent ? worldPos(c.el).x : 0;
+    if (x < cam.x + 20) left = true;
+    if (x > cam.x + cam.viewW - 20) right = true;
+  });
+  $('arrow-left').classList.toggle('hidden', !left);
+  $('arrow-right').classList.toggle('hidden', !right);
+}
+
+// 中景の飾り（雲・木・岩など）をレベルごとにランダム配置
+function buildDecor(lv) {
+  const box = $('bg-mid');
+  box.innerHTML = '';
+  const rnd = makeRng(lv * 31 + 7);
+  const width = parseFloat(box.style.width) || cam.viewW;
+  for (let x = -40; x < width; x += 90 + rnd() * 110) {
+    const kind = CONFIG.decor[Math.floor(rnd() * CONFIG.decor.length)];
+    const img = document.createElement('img');
+    img.className = 'decor ' + kind.name;
+    img.src = `assets/stage/${kind.name}.png`;
+    img.alt = '';
+    img.onerror = () => img.remove();
+    const size = kind.size[0] + rnd() * (kind.size[1] - kind.size[0]);
+    img.style.width = size + 'px';
+    img.style.left = x + 'px';
+    if (kind.sky) img.style.top = (70 + rnd() * 140) + 'px';
+    else img.style.bottom = (26 + rnd() * 10) + 'px';
+    box.appendChild(img);
+  }
+}
+
+// スワイプ・マウスドラッグ・ホイールでステージを見渡す
+function setupCameraControls() {
+  const st = $('stage');
+  let down = false, dragging = false, sx = 0, sc = 0;
+  st.addEventListener('pointerdown', e => {
+    down = true; dragging = false; sx = e.clientX; sc = cam.x;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!down) return;
+    const dx = e.clientX - sx;
+    if (!dragging && Math.abs(dx) > 8) { dragging = true; st.classList.add('dragging'); }
+    if (dragging) setCamera(sc - dx, 0);
+  });
+  window.addEventListener('pointerup', () => {
+    if (!down) return;
+    down = false;
+    st.classList.remove('dragging');
+    if (dragging) {
+      // ドラッグの直後に発生するクリックを「マスをタップした」と扱わない
+      state.justDragged = true;
+      setTimeout(() => { state.justDragged = false; }, 60);
+    }
+  });
+  st.addEventListener('wheel', e => {
+    setCamera(cam.x + (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY), 0);
+    e.preventDefault();
+  }, { passive: false });
+  $('arrow-left').addEventListener('click', () => setCamera(cam.x - cam.viewW * 0.75, 450));
+  $('arrow-right').addEventListener('click', () => setCamera(cam.x + cam.viewW * 0.75, 450));
+}
+
+// 大きな数字を短く表示（12345 → 12.3K, 4560000 → 4.56M）
+function fmt(n) {
+  const units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e4, 'K']];
+  for (const [v, s] of units) {
+    if (n >= v) return (n / v).toPrecision(3).replace(/\.?0+$/, '') + s;
+  }
+  return String(n);
+}
+
 // パワー表示と、敵の数字の色（勝てる=緑 / 勝てない=赤）を更新
 function updatePower() {
-  $('hero-power').textContent = state.power;
+  $('hero-power').textContent = fmt(state.power);
   state.level.towers.flat().forEach(cell => {
     if (cell.type === 'monster') {
       cell.unit.classList.toggle('weak', cell.value < state.power);
@@ -323,28 +466,26 @@ function updatePower() {
 // エフェクト画像をマスの上に一瞬表示する
 function fxBurst(src, floorEl) {
   if (!src) return;
-  const s = $('stage').getBoundingClientRect();
-  const r = floorEl.getBoundingClientRect();
+  const p = worldPos(floorEl);
   const el = document.createElement('img');
   el.className = 'fx';
   el.src = src;
   el.alt = '';
-  el.style.left = (r.left - s.left + r.width / 2) + 'px';
-  el.style.top = (r.top - s.top + r.height / 2) + 'px';
+  el.style.left = p.x + 'px';
+  el.style.top = p.y + 'px';
   el.onerror = () => el.remove();
-  $('stage').appendChild(el);
+  $('world').appendChild(el);
   setTimeout(() => el.remove(), 600);
 }
 
 function popText(text, floorEl, bad) {
-  const s = $('stage').getBoundingClientRect();
-  const r = floorEl.getBoundingClientRect();
+  const p = worldPos(floorEl);
   const el = document.createElement('div');
   el.className = 'pop' + (bad ? ' bad' : '');
   el.textContent = text;
-  el.style.left = (r.left - s.left + r.width / 2) + 'px';
-  el.style.top = (r.top - s.top) + 'px';
-  $('stage').appendChild(el);
+  el.style.left = p.x + 'px';
+  el.style.top = p.top + 'px';
+  $('world').appendChild(el);
   setTimeout(() => el.remove(), 800);
 }
 
@@ -352,14 +493,20 @@ function popText(text, floorEl, bad) {
 //  タップ処理
 // ============================================================
 async function onTap(cell, floorEl) {
-  if (state.busy || state.over || cell.cleared) return;
+  if (state.busy || state.over || cell.cleared || state.justDragged) return;
   state.busy = true;
+  state.moving = true;
 
+  // 遠くのマスほど移動に時間をかけ、カメラも一緒に追いかける
   const hero = $('hero');
+  const from = worldPos(state.heroFloorEl), to = worldPos(floorEl);
+  const moveMs = Math.round(Math.min(900, Math.max(CONFIG.moveMs, Math.hypot(to.x - from.x, to.y - from.y) * 1.1)));
+  hero.style.setProperty('--move-ms', moveMs + 'ms');
   hero.classList.add('jump');
   placeHero(floorEl, false);
+  followFloor(floorEl, moveMs);
   beep(440, 60, 'triangle');
-  await wait(CONFIG.moveMs);
+  await wait(moveMs);
   hero.classList.remove('jump');
 
   if (cell.type === 'monster') {
@@ -372,7 +519,7 @@ async function onTap(cell, floorEl) {
       cell.unit.classList.add('dying');
       fxBurst(CONFIG.fx.kill, floorEl);
       state.power += cell.value;
-      popText('+' + cell.value, floorEl);
+      popText('+' + fmt(cell.value), floorEl);
       beep(660, 80);
       beep(880, 120);
     } else {
@@ -389,7 +536,7 @@ async function onTap(cell, floorEl) {
     cell.unit.classList.add('dying');
     fxBurst(CONFIG.fx.potion, floorEl);
     state.power += cell.value;
-    popText('+' + cell.value, floorEl);
+    popText('+' + fmt(cell.value), floorEl);
     beep(780, 120, 'sine', 0.08);
   } else {
     cell.unit.classList.add('dying');
@@ -408,6 +555,7 @@ async function onTap(cell, floorEl) {
   $('home').classList.add('cleared');
   state.heroFloorEl = floorEl;
   updatePower();
+  updateArrows();
 
   setHeroPose('idle');
   if (state.level.towers.flat().every(c => c.cleared)) {
@@ -417,6 +565,7 @@ async function onTap(cell, floorEl) {
     showWin();
   }
   state.busy = false;
+  state.moving = false;
 }
 
 // ============================================================
@@ -439,7 +588,7 @@ function showWin() {
   [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 140, 'square'), i * 110));
   showOverlay(
     'CLEAR!',
-    `最終パワー <b>${state.power}</b><br>最高記録 ${save.best}`,
+    `最終パワー <b>${fmt(state.power)}</b><br>最高記録 ${fmt(save.best)}`,
     '次のレベルへ',
     () => startLevel(state.lv + 1)
   );
@@ -459,11 +608,15 @@ function showLose() {
 // ============================================================
 function init() {
   $('retry-btn').addEventListener('click', () => {
-    if (!state.busy) startLevel(state.lv);
+    if (!state.moving) startLevel(state.lv);   // 開始演出中でもやり直せる。移動中だけは不可
   });
+  setupCameraControls();
   window.addEventListener('resize', () => {
     layout();
-    if (state.heroFloorEl) placeHero(state.heroFloorEl, true);
+    if (state.heroFloorEl) {
+      placeHero(state.heroFloorEl, true);
+      followFloor(state.heroFloorEl, 0);
+    }
   });
 
   // ?lv=5 のように URL で開始レベルを指定できる（テスト用）

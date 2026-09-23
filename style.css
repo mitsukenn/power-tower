@@ -36,15 +36,17 @@ html, body {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  background: var(--bg-img) center bottom / cover no-repeat,
-              linear-gradient(var(--sky-top), var(--sky-bottom));
+  background: linear-gradient(var(--sky-top), var(--sky-bottom));
   overflow: hidden;
 }
 
 /* ===== HUD ===== */
 .hud {
-  position: relative;
-  z-index: 2;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 8;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -68,28 +70,83 @@ html, body {
 }
 .hud-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #173a7a; }
 
-/* ===== ステージ ===== */
+/* ===== ステージ（スマホに映る窓） ===== */
 #stage {
   position: relative;
   flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: calc(8px + var(--depth));
-  padding: 0 calc(12px + var(--depth)) 0 12px;
-  border-bottom: 34px solid transparent;
+  overflow: hidden;
+  touch-action: pan-y;   /* 横スワイプはゲーム側でカメラ移動に使う */
+  cursor: grab;
 }
+#stage.dragging { cursor: grabbing; }
+
+/* 奥行きレイヤー：遠いものほどゆっくり動く（多重スクロール） */
+.layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+#bg-far {
+  width: 100%;
+  background: var(--bg-img) center bottom / cover no-repeat;
+}
+#bg-mid .decor {
+  position: absolute;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, .25));
+}
+#bg-mid .decor.cloud { opacity: .85; filter: none; }
+
 /* 地面（手前に厚みのある板） */
 #stage::after {
   content: '';
   position: absolute;
-  left: -20px;
-  right: -20px;
-  bottom: -34px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: 34px;
   background: linear-gradient(#8cc85a 0 8px, #5b8c3a 8px, #3f6828);
   box-shadow: 0 -2px 0 rgba(255, 255, 255, .35) inset;
-  z-index: 0;
+  z-index: 1;
+}
+
+/* ステージ本体（横に広い）。カメラ位置は transform で動かす */
+#world {
+  position: absolute;
+  top: 0;
+  bottom: 34px;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--tower-gap, 40px);
+  padding: 0 60px 0 20px;
+  will-change: transform;
+}
+
+/* 画面の外にまだ敵がいる方向を知らせる矢印 */
+.edge-arrow {
+  position: absolute;
+  top: 45%;
+  z-index: 6;
+  width: 44px;
+  height: 60px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 22px;
+  background: rgba(0, 0, 0, .35);
+  cursor: pointer;
+  animation: nudge 1s ease-in-out infinite;
+}
+.edge-arrow.left { left: 6px; --dir: -1; }
+.edge-arrow.right { right: 6px; --dir: 1; }
+.edge-arrow.hidden { display: none; }
+@keyframes nudge {
+  50% { transform: translateX(calc(var(--dir) * 5px)); }
 }
 
 /* ===== 3D の塔（斜投影：正面 + 右側面 + 上面） ===== */
@@ -143,7 +200,7 @@ html, body {
 .enemies {
   display: flex;
   align-items: flex-end;
-  gap: calc(8px + var(--depth));
+  gap: var(--tower-gap, 40px);
 }
 
 /* 各階は壁にくぼんだ部屋のように見せる */
@@ -311,7 +368,8 @@ html, body {
   bottom: 8px;
   left: 0;
   right: 0;
-  z-index: 2;
+  z-index: 7;
+  pointer-events: none;
   margin: 0;
   text-align: center;
   color: #fff;
