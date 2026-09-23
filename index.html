@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="img/icon-192.png">
   <link rel="apple-touch-icon" href="img/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=20260924i">
+  <link rel="stylesheet" href="style.css?v=20260924j">
 </head>
 <body>
   <div id="app">
@@ -74,6 +74,7 @@
         <button class="big-btn gold" id="shop-btn">強化ショップ</button>
       </div>
       <div class="title-coins"><img src="img/items/coins.webp" alt=""><span id="title-coins">0</span></div>
+      <button class="a2hs-btn hidden" id="a2hs-btn">📲 ホーム画面に追加</button>
     </section>
 
     <!-- ===== ワールドマップ（下から上へ進む道） ===== -->
@@ -101,6 +102,17 @@
     </section>
     <div id="stage-banner" class="stage-banner hidden"></div>
 
+    <!-- ===== ホーム画面に追加（手順の案内） ===== -->
+    <div id="a2hs" class="overlay a2hs hidden">
+      <div class="panel a2hs-panel">
+        <button class="lp-close" id="a2hs-close" aria-label="閉じる">×</button>
+        <img class="a2hs-icon" src="img/icon-192.png" alt="">
+        <div class="a2hs-title" id="a2hs-title"></div>
+        <div class="a2hs-body" id="a2hs-body"></div>
+        <div class="panel-btns" id="a2hs-btns"></div>
+      </div>
+    </div>
+
     <!-- ===== ショップ ===== -->
     <section id="shop" class="screen hidden">
       <div class="screen-head">
@@ -113,9 +125,9 @@
     </section>
   </div>
 
-  <script src="js/config.js?v=20260924i"></script>
-  <script src="js/level.js?v=20260924i"></script>
-  <script src="js/audio.js?v=20260924i"></script>
-  <script src="js/game.js?v=20260924i"></script>
+  <script src="js/config.js?v=20260924j"></script>
+  <script src="js/level.js?v=20260924j"></script>
+  <script src="js/audio.js?v=20260924j"></script>
+  <script src="js/game.js?v=20260924j"></script>
 </body>
 </html>

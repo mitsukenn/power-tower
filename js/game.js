@@ -1395,7 +1395,8 @@ async function win() {
     body: `最終パワー <b id="final-power">0</b>
       <div class="sub-line">★3の目安 ${fmt(Math.ceil(state.best * CONFIG.star3))}</div>
       <div class="sub-line">${perfect ? '🏆 全部屋制覇！ 金貨ボーナス +50%' : `寄り道していない部屋：${left}`}</div>
-      <div class="coin-line"><img src="${IMG('items', 'coins')}" alt="">+${coins}</div>`,
+      <div class="coin-line"><img src="${IMG('items', 'coins')}" alt="">+${coins}</div>
+      ${addHomeCard(lv, first)}`,
     buttons: [
       { text: '次へ ▶', onClick: () => { state.introToken++; renderSelect({ advanceFrom: lv }); } },
       { text: stars < 3 ? 'もう一度（★3を目指す）' : 'もう一度', cls: 'sub', onClick: () => startLevel(lv) },
@@ -1448,6 +1449,119 @@ async function lose(cell) {
     ],
   });
 }
+
+// ============================================================
+//  ホーム画面に追加（PWA）
+//  - Android の Chrome など：本物の「インストール」画面を出す（beforeinstallprompt）
+//  - iPhone / iPad：自動では追加できないので、Safari での手順を見せる
+//  - LINE などアプリの中の画面：追加できないので「ブラウザで開いて」と案内
+//  - ホーム画面から初めて開いたら金貨をプレゼント
+// ============================================================
+const addHome = { prompt: null };
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const inAppBrowser = () => /Line\/|Instagram|FBAN|FBAV|FB_IAB|Twitter|TikTok|musical_ly/i.test(navigator.userAgent);
+const SHARE_ICON = '<svg class="share-ico" viewBox="0 0 24 24" aria-label="共有"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 11H6v10h12V11h-2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>';
+
+function canAddHome() {
+  if (isStandalone() || save.seen.installed) return false;
+  return !!addHome.prompt || isIOS() || (inAppBrowser() && /Android/i.test(navigator.userAgent));
+}
+
+function setupAddHome() {
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();               // ブラウザ任せにせず、こちらのボタンから出す
+    addHome.prompt = e;
+    updateAddHomeBtn();
+  });
+  window.addEventListener('appinstalled', () => {
+    save.seen.installed = true;
+    persist();
+    addHome.prompt = null;
+    updateAddHomeBtn();
+  });
+  $('a2hs-btn').onclick = () => { Sound.sfx.click(); openAddHome(); };
+  $('a2hs-close').onclick = closeAddHome;
+  $('a2hs').onclick = e => { if (e.target.id === 'a2hs') closeAddHome(); };
+
+  // ホーム画面から初めて開いた：お礼の金貨
+  if (isStandalone() && !save.seen.homeGift && !demoMode) {
+    save.seen.homeGift = true;
+    save.seen.installed = true;
+    save.coins += CONFIG.homeGift;
+    persist();
+    setTimeout(() => {
+      if (!$('title').classList.contains('hidden')) renderTitle();
+      showAddHome('ようこそ！', `ホーム画面から遊んでくれてありがとう！<br>お礼の金貨をどうぞ
+        <div class="coin-line"><img src="${IMG('items', 'coins')}" alt="">+${CONFIG.homeGift}</div>`,
+        [{ text: 'OK', onClick: closeAddHome }]);
+      Sound.sfx.win();
+    }, 700);
+  }
+}
+
+function updateAddHomeBtn() {
+  $('a2hs-btn').classList.toggle('hidden', !canAddHome());
+}
+
+// クリア画面に出す小さな「ホーム画面に追加」のおすすめ
+function addHomeCard(lv, first) {
+  if (!first || demoMode || !CONFIG.homeAskAt.includes(lv) || !canAddHome()) return '';
+  return `<button class="a2hs-inline" onclick="Sound.sfx.click(); openAddHome()">
+    <span class="a2hs-inline-ico">📲</span>
+    <span><b>ホーム画面に追加</b>すると<br>アプリみたいに全画面ですぐ遊べる！</span>
+    <em>追加</em></button>`;
+}
+
+async function openAddHome() {
+  // Android の Chrome など：本物のインストール画面
+  if (addHome.prompt) {
+    const p = addHome.prompt;
+    addHome.prompt = null;            // 1回しか使えない
+    p.prompt();
+    const r = await p.userChoice.catch(() => null);
+    if (r && r.outcome === 'accepted') { save.seen.installed = true; persist(); }
+    updateAddHomeBtn();
+    document.querySelectorAll('.a2hs-inline').forEach(b => b.remove());
+    return;
+  }
+  const gift = `<div class="a2hs-note">🎁 ホーム画面から開くと、初回だけ<b>金貨 +${CONFIG.homeGift}</b></div>`;
+  if (inAppBrowser()) {
+    showAddHome('ブラウザで開いてね', `LINE などのアプリの中の画面からは、ホーム画面に追加できません。
+      <ol class="a2hs-steps">
+        <li>画面の右上か右下にある <b>…</b> や <b>⋮</b> をタップ</li>
+        <li><b>「${isIOS() ? 'Safari' : 'ブラウザ'}で開く」</b>を選ぶ</li>
+        <li>開いた画面で、もう一度「📲 ホーム画面に追加」</li>
+      </ol>${gift}`, [{ text: 'わかった', onClick: closeAddHome }]);
+    return;
+  }
+  if (isIOS()) {
+    showAddHome('ホーム画面に追加', `アプリみたいに全画面で、ワンタップですぐ遊べます。
+      <ol class="a2hs-steps">
+        <li>Safari の <b>共有ボタン</b> ${SHARE_ICON} をタップ<small>見つからないときは、右下の「…」から「共有」</small></li>
+        <li>下のほうの <b>「ホーム画面に追加」</b>を選ぶ</li>
+        <li>右上の <b>「追加」</b>をタップ</li>
+      </ol>${gift}
+      <div class="a2hs-small">※ iPhone では、ホーム画面から開くと新しいセーブで始まります</div>`,
+      [{ text: 'わかった', onClick: closeAddHome }]);
+  }
+}
+
+function showAddHome(title, body, buttons) {
+  $('a2hs-title').textContent = title;
+  $('a2hs-body').innerHTML = body;
+  const btns = $('a2hs-btns');
+  btns.innerHTML = '';
+  buttons.forEach(b => {
+    const el = document.createElement('button');
+    el.className = 'panel-btn ' + (b.cls || '');
+    el.textContent = b.text;
+    el.onclick = () => { Sound.sfx.click(); b.onClick(); };
+    btns.appendChild(el);
+  });
+  $('a2hs').classList.remove('hidden');
+}
+function closeAddHome() { $('a2hs').classList.add('hidden'); }
 
 // ============================================================
 //  チュートリアル・ヒント
@@ -1527,6 +1641,7 @@ function renderTitle() {
   const fresh = !Object.keys(save.stars).length;
   $('start-btn').textContent = fresh ? '▶ はじめる' : `▶ つづきから Lv ${save.unlocked}`;
   $('title-coins').textContent = fmt(save.coins);
+  updateAddHomeBtn();
 }
 
 // ============================================================
@@ -1842,6 +1957,8 @@ function init() {
     }
     buildMinimap();
   });
+
+  setupAddHome();
 
   // スマホのホーム画面に追加できるように（オフラインでも遊べる）
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

@@ -24,6 +24,7 @@
   - ？ボックス（type `mystery`）は中身 `content` を生成時に決めておく。効果はパワーに対する割合なので、開けて即負けにはならない。
 - 画像は `img/`（WebP・軽量）を使う。原本は `assets/`。原本を追加・変更したら `python tools/optimize.py` で `img/` を作り直す。
 - セーブは localStorage（キー `powerTower.v2`）。解放レベル・★・金貨・ショップ強化・アイテムの数（`save.items`）・既読ヒントなど。
+- ホーム画面に追加の案内は game.js の「ホーム画面に追加（PWA）」の節。Android は beforeinstallprompt、iPhone は手順を表示、LINE などアプリ内ブラウザは「ブラウザで開いて」。すすめるレベルは `CONFIG.homeAskAt`、ホーム画面から初回起動のお礼は `CONFIG.homeGift`。iPhone のホーム画面版はセーブが Safari と別になる点に注意。
 - アイテムは `CONFIG.itemList`。使う処理は game.js の「アイテム」の節（`useItem` / `hammerSmash` / `useShield`）。
 
 ## 公開時の注意
