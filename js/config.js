@@ -36,6 +36,18 @@ const CONFIG = {
   poisons: lv => (lv < 8 ? 0 : Math.min(1 + Math.floor((lv - 8) / 10), 3)),  // ☠ −N（弱いうちに取ると力尽きる）
   poisonRatio: [0.3, 0.45],
 
+  // ？ボックス：開けるまで中身が分からない部屋。中身はパワーに対する割合で効くので、開けて即負けにはならない
+  mysteries: lv => (lv < 4 ? 0 : Math.min(1 + Math.floor((lv - 4) / 6), 4)),
+  mysteryTable: [            // [中身, 出やすさ]
+    ['double', 2],           // ✨ パワー2倍
+    ['plus', 3],             // 💰 パワー +40%
+    ['coin', 2],             // 🪙 金貨（パワーは変わらない）
+    ['bomb', 2],             // 💣 パワー半分
+    ['minus', 2],            // ➖ パワー −25%
+  ],
+  mysteryCoins: lv => 10 + lv * 3,
+  perfectBonus: 0.5,         // 全部屋を回ってからボスを倒すと、金貨 +50%
+
   // ---- ★評価（そのレベルで出せる最高パワーに対する割合） ----
   star3: 0.95,
   star2: 0.6,
@@ -78,6 +90,14 @@ const CONFIG = {
     double: { img: IMG('items', 'star'), emoji: '✨' },
     bomb: { img: IMG('items', 'bomb'), emoji: '💣' },
     poison: { img: IMG('items', 'poison'), emoji: '☠️' },
+  },
+  // ？ボックスの中身の見た目と表示
+  mysteryLook: {
+    double: { img: IMG('items', 'star'), emoji: '✨', label: '×2!', fx: 'level_up', good: true },
+    plus: { img: IMG('items', 'coin_bag'), emoji: '💰', label: '+40%', fx: 'heal', good: true },
+    coin: { img: IMG('items', 'coins'), emoji: '🪙', label: '金貨!', fx: 'coin_burst', good: true },
+    bomb: { img: IMG('items', 'bomb'), emoji: '💣', label: '÷2…', fx: 'pink_explosion', good: false },
+    minus: { img: IMG('items', 'poison'), emoji: '➖', label: '−25%', fx: 'poison_smoke', good: false },
   },
   fx: {
     kill: IMG('effects', 'explosion'),

@@ -44,6 +44,14 @@ function applyCell(power, cell) {
     case 'double': return power * 2;
     case 'bomb': return Math.max(1, Math.floor(power / 2));
     case 'poison': return power - cell.value > 0 ? power - cell.value : null;
+    case 'mystery':
+      switch (cell.content) {
+        case 'double': return power * 2;
+        case 'plus': return power + Math.ceil(power * 0.4);
+        case 'bomb': return Math.max(1, Math.floor(power / 2));
+        case 'minus': return Math.max(1, power - Math.floor(power * 0.25));
+      }
+      return power;   // coin
   }
   return power;
 }
@@ -70,7 +78,9 @@ function generateLevel(lv) {
       }
     }
   };
-  placeIn('bomb', CONFIG.bombs(lv), 1, Math.max(1, Math.floor(total * 0.3)));
+  // 💣 はステージのどこにでも。避けて回り道するか、踏んで近道するか
+  placeIn('bomb', CONFIG.bombs(lv), 1, Math.max(1, Math.floor(total * 0.8)));
+  placeIn('mystery', CONFIG.mysteries(lv), 1, total - 2);
   placeIn('double', CONFIG.doubles(lv), Math.floor(total * 0.55), total - 2);
   placeIn('poison', CONFIG.poisons(lv), Math.floor(total * 0.5), total - 2);
   placeIn('potion', Math.round(total * CONFIG.potionRate), 0, total - 2);
@@ -91,6 +101,14 @@ function generateLevel(lv) {
       const v = Math.max(1, Math.round(p * between(rnd, CONFIG.potionRatio)));
       p += v;
       return { type: 'potion', value: v };
+    }
+    if (kind === 'mystery') {
+      const table = CONFIG.mysteryTable;
+      let r = rnd() * table.reduce((s, [, w]) => s + w, 0);
+      const content = (table.find(([, w]) => (r -= w) < 0) || table[0])[0];
+      const cell = { type: 'mystery', content };
+      p = applyCell(p, cell);
+      return cell;
     }
     if (kind === 'double') { p *= 2; return { type: 'double' }; }
     if (kind === 'bomb') { p = Math.max(1, Math.floor(p / 2)); return { type: 'bomb' }; }
@@ -140,17 +158,23 @@ function generateLevel(lv) {
 
 // ============================================================
 //  そのレベルで出せる最高パワーの目安（★評価に使う）
-//  「💣は早め・弱い敵から・×2と☠は後回し」を基本に、少しずつ順番を崩した手順を何百通りか試す
+//  クリア条件は「ボスを倒す」。ほかの部屋は寄り道自由なので、
+//  「どこまで寄り道してからボスに挑むか」「どの罠を避けるか」を変えた手順を何百通りか試す
 // ============================================================
 function bestScore(cells, start, tries = 400) {
   return bestPlan(cells, start, tries).score;
 }
+
+// 損をするマス（避けられるなら避けたい）
+const isHarmful = c => c.type === 'bomb' || c.type === 'poison'
+  || (c.type === 'mystery' && (c.content === 'bomb' || c.content === 'minus'));
 
 // 最高スコアと、そのときの「最初の1手」を返す（負けたときのヒントに使う）
 // cells: まだ取っていないマス、explored0: 通ったエリア（省略時はスタート地点だけ）
 function bestPlan(cells, start, tries = 400, explored0 = null) {
   const rnd = makeRng(cells.length * 7919 + start);
   const basePri = c => {
+    if (c.type === 'mystery') return isHarmful(c) ? 0.5 : 3.5;
     switch (c.type) {
       case 'bomb': return 0;
       case 'monster': case 'potion': return 1;
@@ -159,13 +183,23 @@ function bestPlan(cells, start, tries = 400, explored0 = null) {
     }
     return 3;
   };
+  const boss = cells.find(c => c.boss);
   let best = -1, first = null;
   for (let t = 0; t < tries; t++) {
     const noise = t === 0 ? 0 : rnd() * 3;
     const pri = new Map(cells.map(c => [c, basePri(c) + rnd() * noise]));
+    // 半分くらいの手順では、損をするマスを最初から避ける
+    const avoid = new Set(t === 0 ? [] : cells.filter(c => isHarmful(c) && rnd() < 0.5));
     let p = start, firstPick = null;
-    const left = cells.slice();
+    const left = cells.filter(c => c !== boss && !avoid.has(c));
     const explored = new Set(explored0 || ['home']);
+    // 今この時点でボスに挑んだらどうなるか（勝てるなら候補）
+    const tryFinish = () => {
+      if (!boss || !isReachable(boss, explored)) return;
+      const fin = applyCell(p, boss);
+      if (fin !== null && fin > best) { best = fin; first = firstPick || boss; }
+    };
+    tryFinish();
     while (left.length) {
       let pick = -1, pickKey = Infinity;
       left.forEach((c, i) => {
@@ -174,13 +208,13 @@ function bestPlan(cells, start, tries = 400, explored0 = null) {
         const key = pri.get(c) + (c.value ? c.value / (p * 10) : 0);
         if (key < pickKey) { pickKey = key; pick = i; }
       });
-      if (pick < 0) { p = -1; break; }
+      if (pick < 0) break;
       if (!firstPick) firstPick = left[pick];
       p = applyCell(p, left[pick]);
       explored.add(cellKey(left[pick].t, left[pick].f));
       left.splice(pick, 1);
+      tryFinish();
     }
-    if (p > best) { best = p; first = firstPick; }
   }
   return { score: best, first };
 }

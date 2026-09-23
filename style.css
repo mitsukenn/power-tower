@@ -986,3 +986,43 @@ html, body {
 /* 通った橋は明るく */
 .bridge.used { filter: none; }
 .mm-dot.far { opacity: .35; }
+
+/* ===== ？ボックス ===== */
+.qbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--floor-h) * .56);
+  height: calc(var(--floor-h) * .56);
+  margin-bottom: 2px;
+  border-radius: 8px;
+  font-size: calc(var(--floor-h) * .38);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 0 #8a4b00, 0 0 6px rgba(255, 255, 255, .8);
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, .7) 0 12%, transparent 13%),
+    linear-gradient(135deg, #ffe066, #f5a300 60%, #c97800);
+  box-shadow:
+    inset 0 0 0 3px #fff3b0, inset -4px -5px 0 rgba(0, 0, 0, .2),
+    0 4px 0 #8a4b00, 0 0 14px rgba(255, 210, 63, .8);
+}
+.floor:not(.far) .qbox { animation: qboxGlow 1.4s ease-in-out infinite; }
+@keyframes qboxGlow {
+  50% { transform: translateY(-4px) rotate(-4deg); box-shadow: inset 0 0 0 3px #fff3b0, inset -4px -5px 0 rgba(0, 0, 0, .2), 0 8px 0 #8a4b00, 0 0 22px rgba(255, 230, 120, 1); }
+}
+.qbox.shaking { animation: qboxShake calc(.42s * var(--spd, 1)) ease-in-out !important; }
+@keyframes qboxShake {
+  15% { transform: rotate(-14deg) scale(1.05); }
+  30% { transform: rotate(12deg) scale(1.1); }
+  45% { transform: rotate(-10deg) scale(1.15); }
+  60% { transform: rotate(8deg) scale(1.2); }
+  100% { transform: scale(1.6); opacity: 0; filter: brightness(3); }
+}
+.unit.mystery .val { background: linear-gradient(#ffe066, #f5a300); color: #6b3f00; box-shadow: 0 2px 0 #8a4b00; text-shadow: none; }
+.unit.mystery.revealed .sprite, .unit.mystery.revealed .emoji { animation: revealPop calc(.4s * var(--spd, 1)) cubic-bezier(.3, 1.8, .5, 1) !important; }
+.unit.mystery.bad .val { background: linear-gradient(#b77cff, #7a3bd1); color: #fff; }
+@keyframes revealPop {
+  from { transform: scale(0) translateY(20px); }
+}
+.mm-dot.mystery { background: #ffb300; box-shadow: 0 0 3px #fff; }

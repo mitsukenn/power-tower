@@ -90,6 +90,7 @@ function startLevel(lv) {
   state.over = false;
   state.evolveIdx = 0;
   state.combo = 0;
+  state.levelCoins = 0;      // ？ボックスで拾った金貨
   clearQueue();
   state.hintCell = null;
 
@@ -193,14 +194,18 @@ function makeUnit(cell) {
     double: () => '×2',
     bomb: () => '÷2',
     poison: () => '−' + fmt(cell.value),
+    mystery: () => '？',
   };
-  const kind = { monster: 'mon', potion: 'item', double: 'item', bomb: 'trap', poison: 'trap' }[cell.type];
-  const look = cell.type === 'monster' ? cell.look : CONFIG.items[cell.type];
+  const kind = { monster: 'mon', potion: 'item', double: 'item', bomb: 'trap', poison: 'trap', mystery: 'mystery' }[cell.type];
   // ワールド最後のレベル（10, 20, …）のボスは特大
   const mega = cell.boss && state.lv % LEVELS_PER_WORLD === 0 ? 'mega' : '';
   u.className = ['unit', kind, cell.boss ? 'boss' : '', mega].join(' ').trim();
   const hp = cell.boss ? '<div class="hpbar"><i></i></div>' : '';
-  u.innerHTML = `${hp}${lookHtml(look)}<span class="val">${labels[cell.type]()}</span>`;
+  // ？ボックスは中身を隠して「？」の箱だけ見せる
+  const body = cell.type === 'mystery'
+    ? '<span class="qbox">?</span>'
+    : lookHtml(cell.type === 'monster' ? cell.look : CONFIG.items[cell.type]);
+  u.innerHTML = `${hp}${body}<span class="val">${labels[cell.type]()}</span>`;
   u.style.setProperty('--bob-delay', (-Math.random() * 1.8).toFixed(2) + 's');
   cell.unit = u;
   return u;
@@ -856,7 +861,10 @@ async function doTap(cell, floorEl) {
   state.busy = true;
   state.moving = true;
   state.pendingCell = cell;
-  state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id, evolveIdx: state.evolveIdx });
+  state.history.push({
+    power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id,
+    evolveIdx: state.evolveIdx, levelCoins: state.levelCoins,
+  });
 
   // 通ったエリアをたどって、目的のマスの隣まで歩く
   const hero = $('hero');
@@ -903,6 +911,9 @@ async function doTap(cell, floorEl) {
     cell.unit.classList.add('dying');
     popText('−' + fmt(cell.value), floorEl, true);
     Sound.sfx.poison();
+  } else if (cell.type === 'mystery') {
+    state.combo = 0;
+    await openMystery(cell, floorEl);
   } else {
     state.combo = 0;
     cell.unit.classList.add('dying');
@@ -936,9 +947,42 @@ async function doTap(cell, floorEl) {
   updateUndo();
 
   state.pendingCell = null;
-  if (state.cells.every(c => c.cleared)) { clearQueue(); return win(); }
+  // ボスを倒したらクリア（ほかの部屋は寄り道自由）
+  if (cell.boss) { clearQueue(); return win(); }
   state.busy = false;
   runQueue();
+}
+
+// ？ボックスを開ける：箱が揺れて、中身が飛び出す
+async function openMystery(cell, floorEl) {
+  const m = CONFIG.mysteryLook[cell.content];
+  const box = cell.unit.querySelector('.qbox');
+  box.classList.add('shaking');
+  Sound.sfx.jump();
+  await wait(420);
+  // 中身を見せる
+  box.outerHTML = lookHtml(m);
+  cell.unit.querySelector('.val').textContent = m.label;
+  cell.unit.classList.add('revealed', m.good ? 'good' : 'bad');
+  fxBurst(IMG('effects', 'sparkle'), floorEl, 1.6);
+  fxBurst(IMG('effects', m.fx), floorEl, 1.4);
+  sparks(worldPos(floorEl), 16, m.good ? ['#fff', '#ffe066', '#7fe0ff'] : ['#c86bff', '#ff5a5a', '#333'], 80);
+  popText(m.label, floorEl, !m.good, 'big');
+  if (cell.content === 'coin') {
+    state.levelCoins += CONFIG.mysteryCoins(state.lv);
+    Sound.sfx.win();
+  } else if (cell.content === 'double') {
+    Sound.sfx.double();
+  } else if (cell.content === 'plus') {
+    Sound.sfx.potion();
+  } else if (cell.content === 'bomb') {
+    Sound.sfx.bomb();
+    shakeStage();
+  } else {
+    Sound.sfx.poison();
+  }
+  await wait(650);
+  cell.unit.classList.add('dying');
 }
 
 // ============================================================
@@ -958,7 +1002,10 @@ function undo() {
     cell.cleared = false;
     cell.el.classList.remove('cleared');
     cell.unit.classList.remove('dying', 'ko', 'hit');
+    // ？ボックスは箱に戻す
+    if (cell.type === 'mystery') cell.el.replaceChild(makeUnit(cell), cell.el.querySelector('.unit'));
   }
+  state.levelCoins = h.levelCoins || 0;
   state.combo = 0;
   state.power = h.power;
   state.heroFloorEl = h.heroFloorEl;
@@ -1028,18 +1075,24 @@ async function win() {
   const lv = state.lv;
   const stars = starsFor(state.power, state.best);
   const first = !save.stars[lv];
-  const coins = first ? CONFIG.coins(lv, stars) : Math.ceil(CONFIG.coins(lv, stars) / 3);
+  // 全部屋を回ってからボスを倒したら PERFECT（金貨ボーナス）
+  const perfect = state.cells.every(c => c.cleared);
+  let coins = first ? CONFIG.coins(lv, stars) : Math.ceil(CONFIG.coins(lv, stars) / 3);
+  if (perfect) coins = Math.ceil(coins * (1 + CONFIG.perfectBonus));
+  coins += state.levelCoins;
   save.stars[lv] = Math.max(save.stars[lv] || 0, stars);
   save.best[lv] = Math.max(save.best[lv] || 0, state.power);
   save.unlocked = Math.max(save.unlocked, lv + 1);
   save.coins += coins;
   persist();
 
+  const left = state.cells.filter(c => !c.cleared).length;
   showOverlay({
-    title: 'CLEAR!',
+    title: perfect ? 'PERFECT!' : 'CLEAR!',
     stars,
     body: `最終パワー <b id="final-power">0</b>
       <div class="sub-line">★3の目安 ${fmt(Math.ceil(state.best * CONFIG.star3))}</div>
+      <div class="sub-line">${perfect ? '🏆 全部屋制覇！ 金貨ボーナス +50%' : `寄り道していない部屋：${left}`}</div>
       <div class="coin-line"><img src="${IMG('items', 'coins')}" alt="">+${coins}</div>`,
     buttons: [
       { text: '次のレベルへ ▶', onClick: () => startLevel(lv + 1) },
@@ -1057,6 +1110,7 @@ function describeCell(c) {
     case 'double': return '✨×2';
     case 'bomb': return '💣爆弾';
     case 'poison': return `☠毒（−${fmt(c.value)}）`;
+    case 'mystery': return '？ボックス';
   }
   return '';
 }
@@ -1126,23 +1180,26 @@ function showGuides() {
       hand.style.top = p.y + 'px';
       hand.classList.remove('hidden');
       if (p.x > cam.x + cam.viewW - 40) setCamera(p.x - cam.viewW * 0.6, 400);   // 画面外なら見える位置へ
-      showTip('自分より<b class="weak-text">弱い敵（緑の数字）</b>をタップして吸収しよう！<br>進めるのは<b>光っている部屋</b>（上下の階・橋の先）だけ', 0);
+      showTip('自分より<b class="weak-text">弱い敵（緑の数字）</b>をタップして吸収しよう！<br>進めるのは<b>光っている部屋</b>（上下の階・橋の先）だけ。<b>ボスを倒せばクリア</b>！', 0);
       save.seen.tutorial = true;
       save.seen.rule = true;
+      save.seen.goal = true;
       persist();
       return;
     }
   }
   // 以前から遊んでいる人向け：新しい移動ルールのお知らせ（1回だけ）
-  if (!save.seen.rule) {
+  if (!save.seen.rule || !save.seen.goal) {
     save.seen.rule = true;
+    save.seen.goal = true;
     persist();
-    showTip('🌉 <b>新ルール</b>：通った場所のとなり（<b>上下の階</b>・<b>橋でつながった隣の塔</b>）にだけ進めるよ。光っている部屋がねらい目！', 7000);
+    showTip('🌉 <b>新ルール</b>：通った場所のとなり（<b>上下の階</b>・<b>橋でつながった隣の塔</b>）にだけ進めるよ。<br>👑 <b>ボスを倒せばクリア</b>！ 寄り道してパワーを集めるほど★が増える', 8000);
     return;
   }
   const tips = {
     double: '✨ <b>×2</b> はパワーが2倍！ <b>大きくなってから</b>取るほどお得',
-    bomb: '💣 <b>爆弾</b>はパワーが半分に…<b>弱いうちに</b>取れば被害が小さい',
+    bomb: '💣 <b>爆弾</b>はパワーが半分に…<b>避けて回り道</b>するか、弱いうちに踏むか',
+    mystery: '❓ <b>？ボックス</b>は開けるまで中身が分からない！ ×2・パワー・金貨…でも爆弾かも？',
     poison: '☠ <b>毒</b>はパワーが減る。弱いうちに取ると<b>力尽きる</b>ので注意！',
   };
   const fresh = Object.keys(tips).filter(type => !save.seen[type] && state.cells.some(c => c.type === type));
