@@ -2,18 +2,19 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#3a7bd5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>パワータワー</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="img/icon-192.png">
+  <link rel="apple-touch-icon" href="img/icon-192.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
-    <header class="hud">
-      <div class="hud-level">Lv <span id="level">1</span></div>
-      <div class="hud-title">パワータワー</div>
-      <button id="retry-btn" class="hud-btn" aria-label="やり直す">↻</button>
-    </header>
 
+    <!-- ===== ゲーム画面 ===== -->
     <!-- stage = スマホに映る「窓」。world = 横に広いステージ本体。カメラで world を動かす -->
     <main id="stage">
       <div id="bg-far" class="layer"></div>
@@ -24,26 +25,78 @@
         </div>
         <div id="enemies" class="enemies"></div>
         <div id="hero" class="unit hero">
-          <img class="sprite" id="hero-sprite" src="assets/hero/idle.png" alt="" draggable="false"
-            onerror="this.outerHTML='<span class=&quot;emoji&quot;>🦸</span>'">
+          <img class="sprite" id="hero-sprite" src="img/hero/idle.webp" alt="" draggable="false">
           <span class="val" id="hero-power">10</span>
         </div>
       </div>
       <button id="arrow-left" class="edge-arrow left hidden" aria-label="左を見る">◀</button>
       <button id="arrow-right" class="edge-arrow right hidden" aria-label="右を見る">▶</button>
+      <img id="tutorial-hand" class="tutorial-hand hidden" src="img/ui/hand.webp" alt="">
     </main>
 
+    <header class="hud">
+      <button id="home-btn" class="hud-btn small" aria-label="タイトルへ">≡</button>
+      <div class="hud-level">
+        <div>Lv <span id="level">1</span></div>
+        <div class="hud-world" id="world-name"></div>
+      </div>
+      <button id="undo-btn" class="hud-btn" aria-label="1手戻す">↶<span id="undo-count">3</span></button>
+      <button id="mute-btn" class="hud-btn small" aria-label="音のオン・オフ">🔊</button>
+      <button id="retry-btn" class="hud-btn small" aria-label="やり直す">↻</button>
+    </header>
+    <div id="minimap" class="minimap" aria-label="ミニマップ"><div id="minimap-view" class="minimap-view"></div></div>
+    <div id="tip" class="tip hidden"></div>
     <p class="hint" id="hint">弱い敵をタップ！ スワイプでステージを見渡せるよ</p>
 
+    <!-- ===== 結果（クリア／負け） ===== -->
     <div id="overlay" class="overlay hidden">
       <div class="panel">
         <div class="panel-title" id="overlay-title"></div>
+        <div class="stars hidden" id="overlay-stars">
+          <img src="img/ui/star_empty.webp" alt=""><img src="img/ui/star_empty.webp" alt=""><img src="img/ui/star_empty.webp" alt="">
+        </div>
         <div class="panel-body" id="overlay-body"></div>
-        <button class="panel-btn" id="overlay-btn"></button>
+        <div class="panel-btns" id="overlay-btns"></div>
       </div>
     </div>
+    <div id="confetti" class="confetti"></div>
+
+    <!-- ===== タイトル ===== -->
+    <section id="title" class="screen">
+      <h1 class="logo">パワー<br>タワー</h1>
+      <img class="title-hero" src="img/hero/king.webp" alt="">
+      <div class="title-btns">
+        <button class="big-btn" id="start-btn">▶ つづきから</button>
+        <button class="big-btn green" id="select-btn">ステージ選択</button>
+        <button class="big-btn gold" id="shop-btn">強化ショップ</button>
+      </div>
+      <div class="title-coins"><img src="img/items/coins.webp" alt=""><span id="title-coins">0</span></div>
+    </section>
+
+    <!-- ===== ステージ選択 ===== -->
+    <section id="select" class="screen hidden">
+      <div class="screen-head">
+        <button class="hud-btn small back-btn" aria-label="戻る">◀</button>
+        <h2>ステージ選択</h2>
+      </div>
+      <div class="select-list" id="select-list"></div>
+    </section>
+
+    <!-- ===== ショップ ===== -->
+    <section id="shop" class="screen hidden">
+      <div class="screen-head">
+        <button class="hud-btn small back-btn" aria-label="戻る">◀</button>
+        <h2>強化ショップ</h2>
+        <div class="title-coins inline"><img src="img/items/coins.webp" alt=""><span id="shop-coins">0</span></div>
+      </div>
+      <div class="shop-list" id="shop-list"></div>
+      <p class="shop-note">金貨はステージクリアでもらえます。★が多いほどたくさん！</p>
+    </section>
   </div>
 
-  <script src="game.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/level.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
 </body>
 </html>
