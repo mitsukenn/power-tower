@@ -41,7 +41,9 @@ function loadSave() {
 }
 
 const save = loadSave();
+let demoMode = false;   // スクリーンショット用の見せかけの進み具合のときは保存しない
 function persist() {
+  if (demoMode) return;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 保存できない環境では無視 */ }
 }
 
@@ -123,7 +125,7 @@ function startLevel(lv) {
   updateUndo();
   renderItemBar();
   buildMinimap();
-  playIntro().then(ok => { if (ok) showGuides(); });
+  playIntro().then(ok => { if (ok && !state.noGuide) showGuides(); });
 }
 
 // 背景：ワールドの背景を順番に使う。読み込めたときだけ差し替える
@@ -243,10 +245,22 @@ function layout() {
 }
 
 // world 内での要素の中心座標
+// world の中での位置と大きさ。画面上の見た目（拡大・縮小やアニメーション）ではなく、
+// レイアウト上の位置で測るので、開始演出でステージを縮小している最中でもずれない
+function worldRect(el) {
+  const world = $('world');
+  let x = 0, y = 0;
+  for (let n = el; n && n !== world; n = n.offsetParent) {
+    x += n.offsetLeft;
+    y += n.offsetTop;
+  }
+  return { left: x, top: y, width: el.offsetWidth, height: el.offsetHeight, right: x + el.offsetWidth, bottom: y + el.offsetHeight };
+}
+
+// world 内での要素の中心座標
 function worldPos(el) {
-  const w = $('world').getBoundingClientRect();
-  const r = el.getBoundingClientRect();
-  return { x: r.left - w.left + r.width / 2, y: r.top - w.top + r.height / 2, top: r.top - w.top };
+  const r = worldRect(el);
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top };
 }
 
 // dx: マスの中心から横にずらす量（敵の手前で止まるとき用）
@@ -621,31 +635,30 @@ function buildBridges() {
   const towers = state.level.towers;
   const edges = state.level.edges;
   const depth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--depth')) || 0;
-  const w = world.getBoundingClientRect();
   const bridge = (aKey, bKey, aEl, bEl) => {
     if (!edges.has(edgeKey(aKey, bKey))) return;
-    const ra = aEl.getBoundingClientRect(), rb = bEl.getBoundingClientRect();
-    const left = ra.right - w.left + 6 + depth;
+    const ra = worldRect(aEl), rb = worldRect(bEl);
+    const left = ra.right + 6 + depth;
     const br = document.createElement('div');
     br.className = 'bridge';
     br.dataset.a = aKey;
     br.dataset.b = bKey;
     br.style.left = left + 'px';
-    br.style.width = Math.max(8, rb.left - w.left - 6 - left) + 'px';
-    br.style.top = (ra.bottom - w.top - 12) + 'px';
+    br.style.width = Math.max(8, rb.left - 6 - left) + 'px';
+    br.style.top = (ra.bottom - 12) + 'px';
     world.appendChild(br);
   };
   // はしご：下の部屋の真ん中あたりから上の部屋の真ん中あたりまで、部屋の左端に立てかける
   const ladder = (lower, upper) => {
     const aKey = cellKey(lower.t, lower.f), bKey = cellKey(upper.t, upper.f);
     if (!edges.has(edgeKey(aKey, bKey))) return;
-    const rl = lower.el.getBoundingClientRect(), ru = upper.el.getBoundingClientRect();
+    const rl = worldRect(lower.el), ru = worldRect(upper.el);
     const ld = document.createElement('div');
     ld.className = 'ladder';
     ld.dataset.a = aKey;
     ld.dataset.b = bKey;
-    ld.style.left = (rl.left - w.left + 3) + 'px';
-    ld.style.top = (ru.top - w.top + ru.height * 0.45) + 'px';
+    ld.style.left = (rl.left + 3) + 'px';
+    ld.style.top = (ru.top + ru.height * 0.45) + 'px';
     ld.style.height = (rl.top - ru.top) + 'px';
     world.appendChild(ld);
   };
@@ -1819,7 +1832,14 @@ function init() {
     buildBridges();
     updateReach();
     placeHero(state.heroFloorEl, true);
-    followFloor(state.heroFloorEl, 0);
+    if (state.introPlaying) {
+      // 開始演出の「全体を見せる」縮小はそのまま保つ（スマホのアドレスバーの出入りなどで起きる）
+      const world = $('world');
+      world.style.transition = 'none';
+      world.style.transform = `scale(${Math.min(1, cam.viewW / world.offsetWidth)})`;
+    } else {
+      followFloor(state.heroFloorEl, 0);
+    }
     buildMinimap();
   });
 
@@ -1829,8 +1849,19 @@ function init() {
   }
 
   // ?lv=5 のように URL で指定するとタイトルを飛ばしてそのレベルから（テスト用）
-  const param = parseInt(new URLSearchParams(location.search).get('lv'), 10);
+  const q = new URLSearchParams(location.search);
+  // スクリーンショット用：?demo=14 で「Lv14まで進めた」見た目にする（保存はしない）、?noguide でヒントを出さない
+  const demo = parseInt(q.get('demo'), 10);
+  if (demo > 0) {
+    demoMode = true;
+    save.unlocked = demo;
+    for (let l = 1; l < demo; l++) save.stars[l] = save.stars[l] || 1 + ((l * 7) % 3);
+    save.coins = Math.max(save.coins, 950);
+  }
+  state.noGuide = q.has('noguide');
+  const param = parseInt(q.get('lv'), 10);
   if (param > 0) startLevel(param);
+  else if (q.has('map')) renderSelect();
   else showScreen('title');
 }
 
