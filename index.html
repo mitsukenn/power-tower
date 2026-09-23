@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>パワータワー</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="hud">
+      <div class="hud-level">Lv <span id="level">1</span></div>
+      <div class="hud-title">パワータワー</div>
+      <button id="retry-btn" class="hud-btn" aria-label="やり直す">↻</button>
+    </header>
+
+    <main id="stage">
+      <div class="home-tower">
+        <div class="floor home" id="home"></div>
+      </div>
+      <div id="enemies" class="enemies"></div>
+      <div id="hero" class="unit hero">
+        <span class="emoji">🦸</span>
+        <span class="val" id="hero-power">10</span>
+      </div>
+    </main>
+
+    <p class="hint" id="hint">自分より弱い敵をタップして吸収しよう！</p>
+
+    <div id="overlay" class="overlay hidden">
+      <div class="panel">
+        <div class="panel-title" id="overlay-title"></div>
+        <div class="panel-body" id="overlay-body"></div>
+        <button class="panel-btn" id="overlay-btn"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

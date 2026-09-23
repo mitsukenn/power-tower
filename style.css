@@ -1,0 +1,227 @@
+:root {
+  --sky-top: #3a7bd5;
+  --sky-bottom: #9fd3ff;
+  --ground: #5b8c3a;
+  --stone: #8a7a66;
+  --stone-dark: #5e5245;
+  --floor-bg: #d8c7a8;
+  --floor-cleared: #b9a88a;
+  --text: #1d1d1f;
+  --weak: #1f9d3a;
+  --strong: #d62d2d;
+  --gold: #f5b700;
+  --panel: #ffffff;
+  --floor-h: 72px;
+  --floor-w: 88px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #1b2a41;
+  font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  color: var(--text);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  position: relative;
+  max-width: 480px;
+  height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(var(--sky-top), var(--sky-bottom));
+  overflow: hidden;
+}
+
+/* ===== HUD ===== */
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  color: #fff;
+  font-weight: 800;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .25);
+}
+.hud-level { font-size: 22px; min-width: 70px; }
+.hud-title { font-size: 18px; letter-spacing: .1em; }
+.hud-btn {
+  min-width: 70px;
+  font-size: 22px;
+  color: #fff;
+  background: rgba(0, 0, 0, .2);
+  border: 0;
+  border-radius: 12px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+/* ===== ステージ ===== */
+#stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 28px solid var(--ground);
+}
+
+.home-tower,
+.tower {
+  display: flex;
+  flex-direction: column-reverse;
+  background: var(--stone);
+  border: 4px solid var(--stone-dark);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  padding: 4px 4px 0;
+  gap: 4px;
+}
+
+.home-tower { background: #6d8fb3; border-color: #45617f; }
+
+.enemies {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.floor {
+  position: relative;
+  width: var(--floor-w);
+  height: var(--floor-h);
+  background: var(--floor-bg);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .2s;
+}
+.floor.home { background: #a9c6e3; cursor: default; }
+.floor.cleared { background: var(--floor-cleared); cursor: default; }
+.floor.cleared .unit { display: none; }
+.floor:not(.cleared):not(.home):active { filter: brightness(1.1); }
+
+/* ===== ユニット（敵・アイテム・ヒーロー共通） ===== */
+.unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  pointer-events: none;
+}
+.unit .emoji { font-size: calc(var(--floor-h) * .48); }
+.unit .val {
+  margin-top: 2px;
+  font-size: calc(var(--floor-h) * .22);
+  font-weight: 900;
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--strong);
+}
+.unit.weak .val { background: var(--weak); }
+.unit.item .val { background: var(--gold); color: #3b2a00; }
+.unit.boss .emoji { font-size: calc(var(--floor-h) * .6); }
+.unit.dying { animation: die .35s forwards; }
+
+.hero {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  transform: translate(-50%, -50%);
+  transition: left var(--move-ms, 320ms) ease-in-out, top var(--move-ms, 320ms) ease-in-out;
+}
+.hero .val { background: #2466d8; }
+.hero.fight { animation: shake .3s; }
+.hero.dying { animation: heroDie .6s forwards; }
+
+/* ===== 演出 ===== */
+.pop {
+  position: absolute;
+  z-index: 10;
+  transform: translate(-50%, -50%);
+  font-size: 24px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .4);
+  pointer-events: none;
+  animation: pop .8s forwards;
+}
+.pop.bad { color: #ffd0d0; }
+
+@keyframes die {
+  to { transform: scale(0) rotate(90deg); opacity: 0; }
+}
+@keyframes heroDie {
+  to { transform: translate(-50%, 40%) rotate(180deg); opacity: 0; }
+}
+@keyframes shake {
+  0%, 100% { margin-left: 0; }
+  25% { margin-left: -6px; }
+  75% { margin-left: 6px; }
+}
+@keyframes pop {
+  0% { opacity: 0; margin-top: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; margin-top: -50px; }
+}
+
+.hint {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ===== オーバーレイ ===== */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .45);
+}
+.overlay.hidden { display: none; }
+.panel {
+  width: min(300px, calc(100% - 32px));
+  background: var(--panel);
+  border-radius: 16px;
+  padding: 24px 16px;
+  text-align: center;
+  animation: panelIn .3s;
+}
+.panel-title { font-size: 32px; font-weight: 900; margin-bottom: 8px; }
+.panel-body { font-size: 16px; margin-bottom: 20px; line-height: 1.6; }
+.panel-btn {
+  width: 100%;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  background: #2466d8;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+@keyframes panelIn {
+  from { transform: scale(.7); opacity: 0; }
+}
