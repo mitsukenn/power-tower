@@ -85,6 +85,7 @@ function startLevel(lv) {
   state.moving = false;
   state.over = false;
   state.evolveIdx = 0;
+  state.combo = 0;
 
   showScreen('game');
   $('level').textContent = lv;
@@ -197,11 +198,12 @@ function worldPos(el) {
   return { x: r.left - w.left + r.width / 2, y: r.top - w.top + r.height / 2, top: r.top - w.top };
 }
 
-function placeHero(floorEl, instant) {
+// dx: マスの中心から横にずらす量（敵の手前で止まるとき用）
+function placeHero(floorEl, instant, dx = 0) {
   const hero = $('hero');
   const p = worldPos(floorEl);
   if (instant) hero.style.transition = 'none';
-  hero.style.left = p.x + 'px';
+  hero.style.left = (p.x + dx) + 'px';
   hero.style.top = p.y + 'px';
   if (instant) {
     void hero.offsetWidth; // transition を無効にしたまま位置を確定させる
@@ -412,7 +414,7 @@ function updatePower() {
 // ============================================================
 //  演出
 // ============================================================
-function fxBurst(src, floorEl, scale = 1) {
+function fxBurst(src, floorEl, scale = 1, rotate = 0) {
   if (!src || !floorEl) return;
   const p = worldPos(floorEl);
   const el = document.createElement('img');
@@ -422,27 +424,30 @@ function fxBurst(src, floorEl, scale = 1) {
   el.style.left = p.x + 'px';
   el.style.top = p.y + 'px';
   el.style.setProperty('--fx-scale', scale);
+  el.style.setProperty('--fx-rot', rotate + 'deg');
   el.onerror = () => el.remove();
   $('world').appendChild(el);
   setTimeout(() => el.remove(), 700);
 }
 
-function popText(text, floorEl, bad) {
+// style: '' / 'big'（大きな数字）/ 'crit'（CRITICAL!）/ 'combo'
+function popText(text, floorEl, bad, style = '') {
   const p = worldPos(floorEl);
   const el = document.createElement('div');
-  el.className = 'pop' + (bad ? ' bad' : '');
+  el.className = ['pop', bad ? 'bad' : '', style].join(' ').trim();
   el.textContent = text;
   el.style.left = p.x + 'px';
   el.style.top = p.top + 'px';
   $('world').appendChild(el);
-  setTimeout(() => el.remove(), 800);
+  setTimeout(() => el.remove(), style ? 1100 : 800);
 }
 
-function shakeStage() {
+// strength: 'small'（通常ヒット）/ 'big'（強敵・爆弾）
+function shakeStage(strength = 'big') {
   const st = $('stage');
-  st.classList.remove('shake');
+  st.classList.remove('shake', 'shake-small');
   void st.offsetWidth;
-  st.classList.add('shake');
+  st.classList.add(strength === 'small' ? 'shake-small' : 'shake');
 }
 
 function confetti() {
@@ -472,6 +477,141 @@ function countUp(el, to, ms) {
 }
 
 // ============================================================
+//  敵を倒す演出：踏み込み斬り → ヒットストップ → 吹き飛び → 光の玉を吸収
+// ============================================================
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// 火花：中心から放射状に飛び散る小さな光
+function sparks(p, count, colors, dist) {
+  const world = $('world');
+  for (let i = 0; i < count; i++) {
+    const s = document.createElement('i');
+    s.className = 'spark';
+    s.style.left = p.x + 'px';
+    s.style.top = p.y + 'px';
+    s.style.background = colors[i % colors.length];
+    const size = rand(4, 9);
+    s.style.width = s.style.height = size + 'px';
+    const a = rand(0, Math.PI * 2), d = rand(dist * 0.4, dist);
+    world.appendChild(s);
+    s.animate([
+      { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
+      { transform: `translate(calc(-50% + ${Math.cos(a) * d}px), calc(-50% + ${Math.sin(a) * d}px)) scale(.2)`, opacity: 0 },
+    ], { duration: rand(350, 650), easing: 'cubic-bezier(.15,.8,.3,1)' }).onfinish = () => s.remove();
+  }
+}
+
+// 敵の絵を複製して、回転しながら奥へ吹き飛ばす（元の絵は隠す）
+function knockOut(cell, power) {
+  const src = cell.unit.querySelector('.sprite, .emoji');
+  if (!src) return;
+  const p = worldPos(src);
+  const r = src.getBoundingClientRect();
+  const ghost = src.cloneNode(true);
+  ghost.className = 'ko-ghost ' + src.className;
+  ghost.style.left = p.x + 'px';
+  ghost.style.top = p.y + 'px';
+  ghost.style.width = r.width + 'px';
+  ghost.style.height = r.height + 'px';
+  $('world').appendChild(ghost);
+  cell.unit.classList.add('ko');
+  const dx = rand(90, 160) * power, dy = -rand(120, 200) * power, spin = rand(360, 720);
+  ghost.animate([
+    { transform: 'translate(-50%, -50%) rotate(0) scale(1)', filter: 'brightness(4)' },
+    { transform: 'translate(calc(-50% + 12px), calc(-50% - 16px)) rotate(25deg) scale(1.15)', filter: 'brightness(1.5)', offset: 0.12 },
+    { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotate(${spin}deg) scale(.25)`, filter: 'brightness(1)', opacity: 0 },
+  ], { duration: 700, easing: 'cubic-bezier(.2,.7,.4,1)' }).onfinish = () => ghost.remove();
+}
+
+// 倒した敵から光の玉がはじけ出て、ヒーローに吸い込まれる
+function absorbOrbs(from, count) {
+  const hero = $('hero');
+  const to = { x: parseFloat(hero.style.left), y: parseFloat(hero.style.top) - 10 };
+  const world = $('world');
+  let longest = 0;
+  for (let i = 0; i < count; i++) {
+    const o = document.createElement('i');
+    o.className = 'orb';
+    o.style.left = from.x + 'px';
+    o.style.top = from.y + 'px';
+    world.appendChild(o);
+    const bx = rand(-70, 70), by = rand(-90, -20);
+    const dur = 430 + i * 30;
+    longest = Math.max(longest, dur);
+    o.animate([
+      { transform: 'translate(-50%, -50%) scale(.3)', opacity: 0 },
+      { transform: `translate(calc(-50% + ${bx}px), calc(-50% + ${by}px)) scale(1.2)`, opacity: 1, offset: 0.35 },
+      { transform: `translate(calc(-50% + ${to.x - from.x}px), calc(-50% + ${to.y - from.y}px)) scale(.4)`, opacity: .9 },
+    ], { duration: dur, easing: 'cubic-bezier(.5,0,.8,.6)' }).onfinish = () => {
+      o.remove();
+      Sound.sfx.absorb(i);
+      hero.classList.remove('absorb');
+      void hero.offsetWidth;
+      hero.classList.add('absorb');
+    };
+  }
+  return longest;
+}
+
+function flashScreen() {
+  const f = document.createElement('div');
+  f.className = 'flash';
+  $('stage').appendChild(f);
+  f.animate([{ opacity: 0.85 }, { opacity: 0 }], { duration: 280, easing: 'ease-out' }).onfinish = () => f.remove();
+}
+
+function zoomPunch(strength) {
+  $('stage').animate([
+    { transform: 'scale(1)' }, { transform: `scale(${1 + strength})` }, { transform: 'scale(1)' },
+  ], { duration: 320, easing: 'cubic-bezier(.2,.9,.3,1)' });
+}
+
+async function killAnimation(cell, floorEl) {
+  const hero = $('hero');
+  const big = cell.boss || cell.tough;         // 強敵・ボスは「クリティカル」演出
+  const center = worldPos(cell.unit.querySelector('.sprite, .emoji') || floorEl);
+  state.combo = (state.combo || 0) + 1;
+
+  // 1) 踏み込んで斬る
+  setHeroPose('attack');
+  hero.classList.add('lunge');
+  Sound.sfx.whoosh();
+  await wait(110);
+
+  // 2) ヒット！ 斬撃・光・揺れ・火花。一瞬止める（ヒットストップ）
+  fxBurst(CONFIG.fx.slash, floorEl, big ? 1.9 : 1.4, rand(-30, 20));
+  cell.unit.classList.add('hit');
+  shakeStage(big ? 'big' : 'small');
+  sparks(center, big ? 26 : 14, ['#fff', '#ffe066', '#ffb03b', '#ff7a3b'], big ? 110 : 70);
+  if (big) {
+    Sound.sfx.critical();
+    flashScreen();
+    zoomPunch(0.06);
+    fxBurst(CONFIG.fx.shockwave, floorEl, 2.2);
+    popText(cell.boss ? 'BOSS DOWN!' : 'CRITICAL!', floorEl, false, 'crit');
+  } else {
+    Sound.sfx.impact();
+  }
+  await wait(big ? 240 : 110);
+
+  // 3) 吹き飛ぶ＋爆発
+  hero.classList.remove('lunge');
+  knockOut(cell, big ? 1.4 : 1);
+  fxBurst(CONFIG.fx.kill, floorEl, big ? 1.6 : 1.1);
+  if (state.combo >= 2) {
+    Sound.sfx.combo(Math.min(state.combo, 8));
+    popText(`COMBO ×${state.combo}`, floorEl, false, 'combo');
+  }
+  await wait(120);
+
+  // 4) 光の玉を吸収して、数字がはじける
+  const ms = absorbOrbs(center, big ? 10 : 6);
+  await wait(ms - 180);   // 最後の玉が届く少し前に次へ（テンポ優先）
+  popText('+' + fmt(cell.value), floorEl, false, big ? 'big' : '');
+  Sound.sfx.hit();
+}
+
+// ============================================================
 //  タップ処理
 // ============================================================
 async function onTap(cell, floorEl) {
@@ -487,7 +627,9 @@ async function onTap(cell, floorEl) {
   const moveMs = Math.round(Math.min(900, Math.max(CONFIG.moveMs, Math.hypot(to.x - from.x, to.y - from.y) * 1.1)));
   hero.style.setProperty('--move-ms', moveMs + 'ms');
   hero.classList.add('jump');
-  placeHero(floorEl, false);
+  // 敵のときは手前で止まって斬りかかる
+  const standOff = cell.type === 'monster' ? -floorEl.offsetWidth * 0.42 : 0;
+  placeHero(floorEl, false, standOff);
   followFloor(floorEl, moveMs);
   Sound.sfx.jump();
   await wait(moveMs);
@@ -496,22 +638,24 @@ async function onTap(cell, floorEl) {
   const after = applyCell(state.power, cell);
 
   if (cell.type === 'monster') {
-    hero.classList.add('fight');
-    setHeroPose('attack');
-    await wait(CONFIG.fightMs / 2);
-    hero.classList.remove('fight');
-    if (after === null) return lose(cell);
-    cell.unit.classList.add('dying');
-    fxBurst(CONFIG.fx.kill, floorEl);
-    popText('+' + fmt(cell.value), floorEl);
-    Sound.sfx.hit();
+    if (after === null) {
+      hero.classList.add('fight');
+      setHeroPose('attack');
+      await wait(CONFIG.fightMs / 2);
+      hero.classList.remove('fight');
+      state.combo = 0;
+      return lose(cell);
+    }
+    await killAnimation(cell, floorEl);
   } else if (cell.type === 'poison') {
+    state.combo = 0;
     fxBurst(CONFIG.fx.poison, floorEl);
     if (after === null) return lose(cell);
     cell.unit.classList.add('dying');
     popText('−' + fmt(cell.value), floorEl, true);
     Sound.sfx.poison();
   } else {
+    state.combo = 0;
     cell.unit.classList.add('dying');
     const fx = { potion: ['+' + fmt(cell.value || 0), 'potion'], double: ['×2!', 'double'], bomb: ['÷2…', 'bomb'] }[cell.type];
     fxBurst(CONFIG.fx[fx[1]], floorEl, cell.type === 'bomb' ? 1.5 : 1);
@@ -524,7 +668,14 @@ async function onTap(cell, floorEl) {
   hero.classList.remove('grow');
   void hero.offsetWidth;
   hero.classList.add('grow');
-  await wait(CONFIG.fightMs / 2);
+  if (standOff) {
+    // 敵がいなくなったマスの中央へ一歩進む
+    hero.style.setProperty('--move-ms', '160ms');
+    placeHero(floorEl, false);
+    await wait(160);
+  } else {
+    await wait(CONFIG.fightMs / 2);
+  }
   cell.cleared = true;
   floorEl.classList.add('cleared');
   $('home').classList.add('cleared');
@@ -555,8 +706,9 @@ function undo() {
   if (cell.cleared) {
     cell.cleared = false;
     cell.el.classList.remove('cleared');
-    cell.unit.classList.remove('dying');
+    cell.unit.classList.remove('dying', 'ko', 'hit');
   }
+  state.combo = 0;
   state.power = h.power;
   state.heroFloorEl = h.heroFloorEl;
   state.evolveIdx = h.evolveIdx;

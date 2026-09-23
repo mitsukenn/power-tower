@@ -440,9 +440,58 @@ html, body {
   animation: fxPop .6s ease-out forwards;
 }
 @keyframes fxPop {
-  0% { opacity: 0; transform: translate(-50%, -50%) scale(calc(var(--fx-scale, 1) * .3)); }
-  25% { opacity: 1; transform: translate(-50%, -50%) scale(calc(var(--fx-scale, 1) * 1.1)); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(calc(var(--fx-scale, 1) * 1.4)); }
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--fx-rot, 0deg)) scale(calc(var(--fx-scale, 1) * .3)); }
+  25% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--fx-rot, 0deg)) scale(calc(var(--fx-scale, 1) * 1.1)); }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--fx-rot, 0deg)) scale(calc(var(--fx-scale, 1) * 1.4)); }
+}
+
+/* ===== 撃破演出 ===== */
+/* 火花・光の玉は JS の animate() で動かす */
+.spark, .orb {
+  position: absolute;
+  z-index: 11;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 6px 2px rgba(255, 220, 120, .8);
+}
+.orb {
+  width: 14px;
+  height: 14px;
+  background: radial-gradient(#fff 0 30%, #7fe0ff 45%, #3a8bff 70%, transparent 72%);
+  box-shadow: 0 0 10px 4px rgba(90, 180, 255, .75);
+}
+/* 吹き飛ぶ敵（複製した絵） */
+.ko-ghost {
+  position: absolute;
+  z-index: 12;
+  pointer-events: none;
+  object-fit: contain;
+  animation: none !important;
+}
+.unit.ko .sprite, .unit.ko .emoji, .unit.ko .val { visibility: hidden; }
+/* 斬られた瞬間に白く光る */
+.unit.hit .sprite, .unit.hit .emoji { filter: brightness(4) saturate(0) drop-shadow(0 0 8px #fff); }
+/* 画面全体の白いフラッシュ（クリティカル） */
+.flash { position: absolute; inset: 0; z-index: 15; background: #fff; pointer-events: none; }
+
+/* ヒーローの踏み込み・吸収 */
+.hero.lunge .sprite, .hero.lunge .emoji { animation: lunge .22s ease-out forwards; }
+@keyframes lunge {
+  0% { transform: translateX(0) rotate(0) scale(1); }
+  40% { transform: translateX(-8px) rotate(-8deg) scale(1.05); }
+  100% { transform: translateX(22px) rotate(10deg) scale(1.15); }
+}
+.hero.absorb .sprite, .hero.absorb .emoji { animation: absorbGlow .25s ease-out; }
+@keyframes absorbGlow {
+  0% { filter: brightness(1.8) drop-shadow(0 0 10px #7fe0ff); transform: scale(1.12); }
+  100% { filter: none; transform: scale(1); }
+}
+
+/* 通常ヒットの小さな揺れ */
+#stage.shake-small #world { animation: stageShakeSmall .18s; }
+@keyframes stageShakeSmall {
+  33% { margin-left: -4px; margin-top: 2px; }
+  66% { margin-left: 3px; margin-top: -1px; }
 }
 
 .pop {
@@ -459,6 +508,31 @@ html, body {
 .pop.bad {
   color: #ffe0e0;
   text-shadow: 0 1px 0 #c22, 0 2px 0 #a11, 0 3px 0 #800, 0 5px 6px rgba(0, 0, 0, .45);
+}
+.pop.big { font-size: 40px; }
+.pop.crit, .pop.combo {
+  z-index: 13;
+  white-space: nowrap;
+  animation: popStamp 1.1s forwards;
+}
+.pop.crit {
+  font-size: 34px;
+  color: #fff;
+  -webkit-text-stroke: 1.5px #b30000;
+  text-shadow: 0 2px 0 #ff3b3b, 0 4px 0 #b30000, 0 6px 0 #700, 0 0 16px rgba(255, 80, 0, .9);
+}
+.pop.combo {
+  margin-top: -44px;
+  font-size: 22px;
+  color: #ffe066;
+  text-shadow: 0 2px 0 #b06a00, 0 4px 0 #6b3f00, 0 0 10px rgba(255, 200, 0, .8);
+}
+@keyframes popStamp {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(2.6) rotate(-8deg); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(.9) rotate(-4deg); }
+  25% { transform: translate(-50%, -50%) scale(1.05) rotate(-4deg); }
+  75% { opacity: 1; transform: translate(-50%, -80%) scale(1) rotate(-4deg); }
+  100% { opacity: 0; transform: translate(-50%, -120%) scale(.9) rotate(-4deg); }
 }
 
 @keyframes bob {

@@ -75,6 +75,8 @@ const CONFIG = {
   },
   fx: {
     kill: IMG('effects', 'explosion'),
+    slash: IMG('effects', 'slash'),
+    shockwave: IMG('effects', 'shockwave'),
     potion: IMG('effects', 'heal'),
     double: IMG('effects', 'level_up'),
     bomb: IMG('effects', 'pink_explosion'),

@@ -34,8 +34,38 @@ const Sound = (() => {
     osc.stop(t + ms / 1000);
   }
 
+  // ホワイトノイズ（打撃音・風切り音用）。filterFreq で音色を変える
+  function noise(ms = 150, vol = 0.1, filterFreq = 1200, at = 0, sweepTo = 0) {
+    if (!ensure()) return;
+    const t = ctx.currentTime + at;
+    const len = Math.floor(ctx.sampleRate * ms / 1000);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(filterFreq, t);
+    if (sweepTo) filter.frequency.exponentialRampToValueAtTime(sweepTo, t + ms / 1000);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+    src.connect(filter).connect(gain).connect(master);
+    src.start(t);
+  }
+
   // 効果音
   const sfx = {
+    whoosh: () => noise(160, 0.12, 600, 0, 3000),
+    impact: () => { noise(120, 0.25, 900); tone(90, 160, 'sine', 0.2); tone(180, 80, 'square', 0.05); },
+    critical: () => {
+      noise(300, 0.3, 500, 0, 150);
+      tone(60, 400, 'sine', 0.25);
+      [880, 1175, 1568].forEach((f, i) => tone(f, 160, 'square', 0.04, 0.05 + i * 0.05));
+    },
+    absorb: i => tone(900 + i * 110, 70, 'sine', 0.05),
+    combo: n => [0, 4, 7].forEach((s, i) => tone(523 * Math.pow(2, (s + n) / 12), 90, 'triangle', 0.05, i * 0.05)),
     jump: () => tone(440, 60, 'triangle'),
     hit: () => { tone(660, 80); tone(880, 120, 'square', 0.05, 0.06); },
     potion: () => tone(780, 120, 'sine', 0.08),
