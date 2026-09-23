@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="img/icon-192.png">
   <link rel="apple-touch-icon" href="img/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=20260924d">
+  <link rel="stylesheet" href="style.css?v=20260924e">
 </head>
 <body>
   <div id="app">
@@ -77,12 +77,26 @@
 
     <!-- ===== ワールドマップ（下から上へ進む道） ===== -->
     <section id="select" class="screen map-screen hidden">
-      <div class="screen-head">
+      <div class="screen-head map-head">
         <button class="hud-btn small back-btn" aria-label="戻る">◀</button>
-        <h2>ワールドマップ</h2>
-        <div class="title-coins inline"><img src="img/items/coins.webp" alt=""><span id="map-coins">0</span></div>
+        <div class="map-pill"><img src="img/ui/star_gold.webp" alt=""><span id="map-stars">0</span></div>
+        <div class="map-pill"><img src="img/items/coins.webp" alt=""><span id="map-coins">0</span></div>
       </div>
       <div class="map" id="select-list"></div>
+      <div class="map-play-bar">
+        <button class="big-btn map-play" id="map-play">▶ プレイ</button>
+      </div>
+      <!-- レベルのプレビュー -->
+      <div id="lv-preview" class="lv-preview hidden">
+        <div class="lp-card">
+          <button class="lp-close" id="lp-close" aria-label="閉じる">×</button>
+          <div class="lp-ribbon" id="lp-title">Lv 1</div>
+          <div class="lp-type" id="lp-type"></div>
+          <div class="lp-stars" id="lp-stars"></div>
+          <div class="lp-info" id="lp-info"></div>
+          <button class="big-btn lp-play" id="lp-play">PLAY</button>
+        </div>
+      </div>
     </section>
     <div id="stage-banner" class="stage-banner hidden"></div>
 
@@ -98,9 +112,9 @@
     </section>
   </div>
 
-  <script src="js/config.js?v=20260924d"></script>
-  <script src="js/level.js?v=20260924d"></script>
-  <script src="js/audio.js?v=20260924d"></script>
-  <script src="js/game.js?v=20260924d"></script>
+  <script src="js/config.js?v=20260924e"></script>
+  <script src="js/level.js?v=20260924e"></script>
+  <script src="js/audio.js?v=20260924e"></script>
+  <script src="js/game.js?v=20260924e"></script>
 </body>
 </html>

@@ -1225,9 +1225,8 @@ async function win() {
       <div class="sub-line">${perfect ? '🏆 全部屋制覇！ 金貨ボーナス +50%' : `寄り道していない部屋：${left}`}</div>
       <div class="coin-line"><img src="${IMG('items', 'coins')}" alt="">+${coins}</div>`,
     buttons: [
-      { text: '次のレベルへ ▶', onClick: () => startLevel(lv + 1) },
+      { text: '次へ ▶', onClick: () => { state.introToken++; renderSelect({ advanceFrom: lv }); } },
       { text: stars < 3 ? 'もう一度（★3を目指す）' : 'もう一度', cls: 'sub', onClick: () => startLevel(lv) },
-      { text: '🗺 マップ', cls: 'sub', onClick: () => { state.introToken++; renderSelect(); } },
     ],
   });
   countUp($('final-power'), state.power, 900);
@@ -1358,35 +1357,92 @@ function renderTitle() {
   $('title-coins').textContent = fmt(save.coins);
 }
 
-// ワールドマップ：下（Lv1）から上へ曲がりくねった道。ワールドごとに背景が変わる
-function renderSelect() {
+// ============================================================
+//  ワールドマップ（人気パズルゲームのマップを参考に）
+//  - 下（Lv1）から上へ曲がりくねった石畳の道。ワールドごとに景色と飾り、流れる雲
+//  - ボスのレベルはボスの顔、宝物庫は宝箱。今のレベルにはヒーローと「▼」
+//  - ワールドの境目にリボンの看板（★の進み具合）。まだ行けないワールドは雲に覆われて鍵
+//  - 画面下に大きな「▶ Lv N をプレイ」、レベルをタップするとプレビュー
+//  - クリアして戻ると、ヒーローが次のレベルまで歩いて、次のプレビューが開く
+// ============================================================
+const MAP = { STEP: 104, xOf: lv => 50 + Math.sin(lv * 0.85) * 27 };
+
+function totalStars() {
+  return Object.values(save.stars).reduce((s, n) => s + n, 0);
+}
+
+// 点の列をなめらかな曲線の path にする（区間 0〜upto まで）
+function curvePath(pts, upto = pts.length - 1) {
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i <= upto; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+    const my = (y0 + y1) / 2;
+    d += ` C${x0} ${my} ${x1} ${my} ${x1} ${y1}`;
+  }
+  return d;
+}
+
+function renderSelect(opts = {}) {
   const map = $('select-list');
   map.innerHTML = '';
   $('map-coins').textContent = fmt(save.coins);
+  $('map-stars').textContent = totalStars();
   const maxLv = Math.max(WORLDS.length * LEVELS_PER_WORLD, Math.ceil(save.unlocked / LEVELS_PER_WORLD) * LEVELS_PER_WORLD);
-  const STEP = 100;                                   // レベルどうしの縦の間隔(px)
-  const H = LEVELS_PER_WORLD * STEP + 70;             // 1ワールドの高さ
-  const xOf = lv => 50 + Math.sin(lv * 0.85) * 28;    // 道のうねり（横位置 %）
+  const H = LEVELS_PER_WORLD * MAP.STEP + 220;          // 1ワールドの高さ（上の看板とボスの顔のぶん含む）
+  const { xOf, STEP } = MAP;
   // 上から「最後のワールド → 最初のワールド」の順に並べる
   for (let from = maxLv - LEVELS_PER_WORLD + 1; from >= 1; from -= LEVELS_PER_WORLD) {
-    const w = worldOf(from);
+    const wi = Math.min(WORLDS.length - 1, Math.floor((from - 1) / LEVELS_PER_WORLD));
+    const w = WORLDS[wi];
+    const worldLocked = from > save.unlocked;
+    const got = Array.from({ length: LEVELS_PER_WORLD }, (_, i) => save.stars[from + i] || 0).reduce((a, b) => a + b, 0);
     const sec = document.createElement('div');
-    sec.className = 'map-world';
+    sec.className = 'map-world' + (worldLocked ? ' locked' : '');
     sec.style.height = H + 'px';
     sec.style.setProperty('--wbg', `url("${IMG('backgrounds', w.backgrounds[0])}")`);
-    const yOf = i => H - 45 - i * STEP;               // i = ワールド内の番号（0 が一番下）
-    // 道（下の端から上の端まで、各レベルを通る）
+    const yOf = i => H - 55 - i * STEP;               // i = ワールド内の番号（0 が一番下）
+
+    // 道（下の端から上の端まで、各レベルを通る）。クリア済みの区間は金色
     const pts = [[xOf(from), H]];
     for (let i = 0; i < LEVELS_PER_WORLD; i++) pts.push([xOf(from + i), yOf(i)]);
     pts.push([xOf(from + LEVELS_PER_WORLD), 0]);
-    const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
+    const d = curvePath(pts);
+    const doneI = Math.max(0, Math.min(LEVELS_PER_WORLD, save.unlocked - from));
+    const dDone = doneI > 0 ? curvePath(pts, doneI) : '';
+
+    // 景色の飾り：道と反対側に、ワールドごとの木・岩・旗など
+    const rnd = makeRng(from * 131 + 7);
+    const decorNames = MAP_DECOR[wi] || MAP_DECOR[0];
+    let decor = '';
+    for (let i = 0; i < 12; i++) {
+      const y = 90 + rnd() * (H - 140);
+      const lvAt = from + Math.max(0, Math.min(LEVELS_PER_WORLD - 1, Math.round((H - 55 - y) / STEP)));
+      const x = xOf(lvAt) > 50 ? 3 + rnd() * 24 : 72 + rnd() * 22;
+      const name = decorNames[Math.floor(rnd() * decorNames.length)];
+      const size = name === 'cloud' ? 90 + rnd() * 50 : name === 'torch' ? 30 : 48 + rnd() * 40;
+      decor += `<img class="map-decor ${name}" src="${IMG('stage', name)}" alt="" style="left:${x}%;top:${y}px;width:${size}px" onerror="this.remove()">`;
+    }
+    // 流れる雲
+    const clouds = [0, 1, 2].map(k => `<img class="map-cloud" src="${IMG('stage', 'cloud')}" alt=""
+      style="top:${80 + k * (H / 3.2)}px;animation-duration:${40 + k * 17}s;animation-delay:${-k * 13}s;width:${120 + k * 30}px">`).join('');
+
     sec.innerHTML = `
+      ${clouds}${decor}
       <svg class="map-road" viewBox="0 0 100 ${H}" preserveAspectRatio="none">
+        <path d="${d}" class="road-shadow" vector-effect="non-scaling-stroke"/>
         <path d="${d}" class="road-edge" vector-effect="non-scaling-stroke"/>
         <path d="${d}" class="road" vector-effect="non-scaling-stroke"/>
-        <path d="${d}" class="road-dash" vector-effect="non-scaling-stroke"/>
+        <path d="${d}" class="road-stones" vector-effect="non-scaling-stroke"/>
+        ${dDone ? `<path d="${dDone}" class="road-done" vector-effect="non-scaling-stroke"/>` : ''}
       </svg>
-      <div class="map-sign">${w.name}<small>Lv ${from}〜${from + LEVELS_PER_WORLD - 1}</small></div>`;
+      <div class="map-banner">
+        <img class="mb-ribbon" src="${IMG('ui', 'ribbon')}" alt="">
+        <div class="mb-text"><b>WORLD ${wi + 1}</b>${w.name}</div>
+        <div class="mb-progress"><img src="${IMG('ui', 'star_gold')}" alt="">${got} / ${LEVELS_PER_WORLD * 3}</div>
+      </div>
+      ${worldLocked ? `<div class="map-fog"><div class="fog-lock"><img src="${IMG('ui', 'lock')}" alt="">
+        <span>Lv ${from - 1} をクリアで解放</span></div></div>` : ''}`;
+
     for (let i = 0; i < LEVELS_PER_WORLD; i++) {
       const lv = from + i;
       const type = stageTypeOf(lv);
@@ -1394,24 +1450,89 @@ function renderSelect() {
       const st = save.stars[lv] || 0;
       const b = document.createElement('button');
       b.className = ['map-node', type, locked ? 'locked' : '', st ? 'cleared' : '', lv === save.unlocked ? 'current' : ''].join(' ');
+      b.dataset.lv = lv;
       b.style.left = xOf(lv) + '%';
       b.style.top = yOf(i) + 'px';
-      b.innerHTML = `<span class="num">${locked ? '🔒' : lv}</span>
-        ${STAGE_TYPES[type].icon ? `<span class="type-badge">${STAGE_TYPES[type].icon}</span>` : ''}
-        ${NEW_AT[lv] ? `<span class="new-tag">NEW ${NEW_AT[lv]}</span>` : ''}
-        ${st ? `<span class="node-stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span>` : ''}
-        ${lv === save.unlocked ? `<img class="map-hero" src="${CONFIG.hero('idle')}" alt="">` : ''}`;
+      // ボスはボスの顔、宝物庫は宝箱を丸の上に
+      const portrait = type === 'boss' ? `<img class="node-portrait" src="${IMG('bosses', w.boss)}" alt="">`
+        : type === 'treasure' ? `<img class="node-portrait chest" src="${IMG('items', st ? 'chest_open' : 'chest')}" alt="">` : '';
+      const stars = [0, 1, 2].map(k => `<img src="${IMG('ui', k < st ? 'star_gold' : 'star_empty')}" alt="">`).join('');
+      const badge = STAGE_TYPES[type].icon && type !== 'boss' && type !== 'treasure'
+        ? `<span class="type-badge">${STAGE_TYPES[type].icon}</span>` : '';
+      b.innerHTML = `${portrait}
+        <span class="node-disc"><span class="num">${locked ? `<img class="node-lock" src="${IMG('ui', 'lock')}" alt="">` : lv}</span></span>
+        ${locked ? '' : `<span class="node-stars">${stars}</span>`}
+        ${badge}
+        ${NEW_AT[lv] && !locked ? `<span class="new-tag">NEW ${NEW_AT[lv]}</span>` : ''}`;
       b.disabled = locked;
-      b.onclick = () => { Sound.sfx.click(); startLevel(lv); };
+      b.onclick = () => { Sound.sfx.click(); openPreview(lv); };
       sec.appendChild(b);
     }
     map.appendChild(sec);
   }
+
+  // 今いるレベルにヒーロー（進んだぶん見た目も成長）
+  const heroLook = CONFIG.evolve[Math.min(CONFIG.evolve.length - 1, Math.floor(save.unlocked / 12))][1];
+  const hero = document.createElement('div');
+  hero.className = 'map-hero-wrap';
+  hero.innerHTML = `<div class="map-pointer">▼</div><img class="map-hero" src="${CONFIG.hero(heroLook)}" alt="">`;
+  map.appendChild(hero);
+
+  $('map-play').textContent = `▶ Lv ${save.unlocked} をプレイ`;
+  $('lv-preview').classList.add('hidden');
   ['title', 'shop'].forEach(id => $(id).classList.add('hidden'));
   $('select').classList.remove('hidden');
   $('app').dataset.screen = 'select';
-  const cur = map.querySelector('.current');
-  if (cur) cur.scrollIntoView({ block: 'center' });
+
+  const nodeOf = lv => map.querySelector(`.map-node[data-lv="${lv}"]`);
+  const placeHeroAt = (lv, ms) => {
+    const n = nodeOf(lv);
+    if (!n) return;
+    const mr = map.getBoundingClientRect(), r = n.getBoundingClientRect();
+    hero.style.transition = ms ? `left ${ms}ms ease-in-out, top ${ms}ms ease-in-out` : 'none';
+    hero.style.left = (r.left - mr.left + r.width / 2) + 'px';
+    hero.style.top = (r.top - mr.top) + 'px';
+  };
+
+  // クリアして戻ってきたとき：前のレベルから次のレベルへ歩いて、プレビューを開く
+  if (opts.advanceFrom && nodeOf(opts.advanceFrom) && opts.advanceFrom < save.unlocked) {
+    placeHeroAt(opts.advanceFrom, 0);
+    nodeOf(opts.advanceFrom).scrollIntoView({ block: 'center' });
+    const next = nodeOf(save.unlocked);
+    setTimeout(() => {
+      Sound.sfx.jump();
+      hero.classList.add('walking');
+      placeHeroAt(save.unlocked, 900);
+      next?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 500);
+    setTimeout(() => {
+      hero.classList.remove('walking');
+      next?.classList.add('unlocked-now');
+      Sound.sfx.evolve();
+      openPreview(save.unlocked);
+    }, 1500);
+  } else {
+    placeHeroAt(save.unlocked, 0);
+    nodeOf(save.unlocked)?.scrollIntoView({ block: 'center' });
+  }
+}
+
+// レベルのプレビュー（ステージの種類・★・最高パワー・PLAY）
+function openPreview(lv) {
+  const type = stageTypeOf(lv);
+  const t = STAGE_TYPES[type];
+  const st = save.stars[lv] || 0;
+  $('lp-title').textContent = `Lv ${lv}`;
+  $('lp-type').innerHTML = t.name
+    ? `<b>${t.name}</b><br>${t.desc}`
+    : `${worldOf(lv).name}<br><small>ボスを倒してお姫様を助けよう！</small>`;
+  $('lp-stars').innerHTML = [0, 1, 2].map(k => `<img src="${IMG('ui', k < st ? 'star_gold' : 'star_empty')}" alt="">`).join('');
+  $('lp-info').innerHTML = [
+    save.best[lv] ? `最高パワー <b>${fmt(save.best[lv])}</b>` : 'まだクリアしていないステージ',
+    NEW_AT[lv] ? `<span class="lp-new">NEW ${NEW_AT[lv]} 新しい仕掛けが登場！</span>` : '',
+  ].filter(Boolean).join('<br>');
+  $('lp-play').onclick = () => { Sound.sfx.click(); $('lv-preview').classList.add('hidden'); startLevel(lv); };
+  $('lv-preview').classList.remove('hidden');
 }
 
 function renderShop() {
@@ -1497,6 +1618,8 @@ function init() {
   $('home-btn').onclick = () => { if (!state.moving) { state.introToken++; renderSelect(); } };
   $('retry-btn').onclick = () => { if (!state.moving) startLevel(state.lv); };
   $('undo-btn').onclick = undo;
+  $('map-play').onclick = () => { Sound.sfx.click(); openPreview(save.unlocked); };
+  $('lp-close').onclick = () => $('lv-preview').classList.add('hidden');
   $('mute-btn').onclick = () => setMuted(!save.muted);
   $('tip').onclick = hideTip;
   $('minimap').addEventListener('click', e => {

@@ -179,6 +179,15 @@ const WORLDS = [
   },
 ];
 
+// ワールドマップの景色の飾り（img/stage のファイル名）
+const MAP_DECOR = [
+  ['tree', 'tree', 'rock', 'fence', 'flag', 'tree'],
+  ['rock', 'torch', 'gate', 'rock', 'fence'],
+  ['cloud', 'rock', 'tree', 'cloud', 'flag'],
+  ['rock', 'torch', 'rock', 'broken_wall'],
+  ['castle_wall', 'torch', 'gate', 'flag', 'broken_wall'],
+];
+
 const LEVELS_PER_WORLD = 10;
 const worldOf = lv => WORLDS[Math.min(WORLDS.length - 1, Math.floor((lv - 1) / LEVELS_PER_WORLD))];
 

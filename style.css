@@ -1208,3 +1208,339 @@ html, body {
   pointer-events: none;
 }
 @keyframes heroHop { 50% { transform: translateX(-50%) translateY(-10px); } }
+
+/* ============================================================
+   ワールドマップ（豪華版）
+   ============================================================ */
+.map-screen { background: #0b1830; }
+.map { position: relative; width: 100%; padding-bottom: 90px; }
+.map-head { justify-content: flex-start; gap: 8px; z-index: 30; }
+.map-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 12px 3px 4px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, .45);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .2);
+  font-size: 16px;
+  font-weight: 900;
+}
+.map-pill:first-of-type { margin-left: auto; }
+.map-pill img { width: 26px; height: 26px; object-fit: contain; }
+
+.map-world {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 60%, transparent 40%, rgba(0, 0, 0, .35)),
+    var(--wbg) center / cover;
+}
+/* ワールドの境目：上を少し暗くして区切る */
+.map-world::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 60px;
+  background: linear-gradient(rgba(0, 0, 0, .55), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+.map-decor {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  filter: drop-shadow(0 8px 6px rgba(0, 0, 0, .35));
+  pointer-events: none;
+  z-index: 1;
+}
+.map-decor.cloud { opacity: .9; filter: none; transform: translate(-50%, -50%); }
+.map-decor.flag { animation: flagWave 1.6s ease-in-out infinite; transform-origin: 20% 100%; }
+.map-decor.torch { animation: flicker .5s steps(2) infinite; }
+@keyframes flagWave { 50% { transform: translate(-50%, -100%) rotate(-4deg) scaleX(.94); } }
+@keyframes flicker { 50% { filter: drop-shadow(0 0 10px rgba(255, 160, 40, .9)) brightness(1.15); } }
+.map-cloud {
+  position: absolute;
+  left: -40%;
+  opacity: .75;
+  pointer-events: none;
+  z-index: 3;
+  animation: cloudDrift linear infinite;
+}
+@keyframes cloudDrift { to { transform: translateX(260%); } }
+
+/* 石畳の道 */
+.map-road { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+.map-road path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.map-road .road-shadow { stroke: rgba(0, 0, 0, .35); stroke-width: 44px; transform: translateY(6px); }
+.map-road .road-edge { stroke: #7a5a34; stroke-width: 40px; }
+.map-road .road { stroke: #e2c794; stroke-width: 32px; }
+.map-road .road-stones { stroke: #c9a86b; stroke-width: 24px; stroke-dasharray: 6 10; }
+.map-road .road-done { stroke: #ffd23f; stroke-width: 8px; stroke-dasharray: 2 14; filter: drop-shadow(0 0 4px #fff3b0); }
+
+/* ワールドの看板（リボン） */
+.map-banner {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 6;
+  width: min(330px, 88%);
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+.mb-ribbon { width: 100%; filter: drop-shadow(0 6px 6px rgba(0, 0, 0, .45)); }
+.mb-text {
+  position: absolute;
+  top: 18%;
+  left: 0;
+  right: 0;
+  font-size: 17px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 0 #7a0f0f, 0 0 6px rgba(0, 0, 0, .5);
+}
+.mb-text b { display: block; font-size: 11px; letter-spacing: .25em; color: #ffe29a; }
+.mb-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: -6px;
+  padding: 2px 10px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, .55);
+  font-size: 13px;
+  font-weight: 900;
+  color: #ffe29a;
+}
+.mb-progress img { width: 18px; }
+
+/* まだ行けないワールドは雲に覆われる */
+.map-fog {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, .55), transparent 40%),
+    radial-gradient(circle at 70% 60%, rgba(255, 255, 255, .5), transparent 45%),
+    linear-gradient(rgba(190, 205, 230, .82), rgba(150, 165, 200, .9));
+  backdrop-filter: blur(3px);
+}
+.fog-lock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 22px;
+  border-radius: 18px;
+  background: rgba(20, 30, 60, .75);
+  font-weight: 900;
+  color: #fff;
+}
+.fog-lock img { width: 64px; }
+
+/* レベルの丸ボタン（ツヤのある3D） */
+.map-node {
+  position: absolute;
+  z-index: 5;
+  width: 66px;
+  height: 66px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  animation: none;
+}
+.node-disc {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, .85) 0 12%, transparent 30%),
+    radial-gradient(circle at 50% 60%, #6fa8ff, #1f4fb0 70%);
+  box-shadow: 0 6px 0 #10306f, 0 10px 14px rgba(0, 0, 0, .5), inset 0 -6px 10px rgba(0, 0, 0, .25);
+}
+.node-disc .num { font-size: 24px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, .4); }
+.map-node.cleared .node-disc {
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, .85) 0 12%, transparent 30%),
+    radial-gradient(circle at 50% 60%, #7fe38f, #16873a 70%);
+  box-shadow: 0 6px 0 #0c5222, 0 10px 14px rgba(0, 0, 0, .5), inset 0 -6px 10px rgba(0, 0, 0, .25);
+}
+.map-node.current .node-disc {
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, .9) 0 12%, transparent 30%),
+    radial-gradient(circle at 50% 60%, #ffe066, #e08a00 70%);
+  box-shadow: 0 6px 0 #8f5200, 0 0 0 6px rgba(255, 230, 120, .45), 0 0 26px 6px rgba(255, 210, 63, .9);
+  animation: nodeGlow 1.2s ease-in-out infinite;
+}
+@keyframes nodeGlow { 50% { transform: scale(1.08); } }
+.map-node.locked .node-disc {
+  background: radial-gradient(circle at 50% 60%, #aab0bd, #5d6472 70%);
+  box-shadow: 0 6px 0 #3a3f48, 0 8px 10px rgba(0, 0, 0, .4);
+  border-color: #d7dbe3;
+}
+.node-lock { width: 30px; }
+.map-node.boss { width: 82px; height: 82px; }
+.map-node.boss .node-disc {
+  border-color: #ffd23f;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, .8) 0 10%, transparent 28%),
+    radial-gradient(circle at 50% 60%, #ff7a7a, #9e1111 70%);
+  box-shadow: 0 6px 0 #5c0808, 0 0 22px rgba(255, 60, 60, .8);
+}
+.map-node.treasure .node-disc {
+  border-color: #fff3b0;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, .85) 0 12%, transparent 30%),
+    radial-gradient(circle at 50% 60%, #ffe98a, #d98a00 70%);
+  box-shadow: 0 6px 0 #8f5200, 0 0 18px rgba(255, 210, 63, .8);
+}
+/* ボスの顔・宝箱は丸の上に */
+.node-portrait {
+  position: absolute;
+  bottom: 62%;
+  left: 50%;
+  width: 78px;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 6px 5px rgba(0, 0, 0, .5));
+  z-index: 1;
+  pointer-events: none;
+}
+.map-node.boss .node-portrait { width: 96px; animation: bossBreath 2s ease-in-out infinite; }
+.node-portrait.chest { width: 54px; bottom: 70%; }
+@keyframes bossBreath { 50% { transform: translateX(-50%) scale(1.06); } }
+.map-node.locked .node-portrait { filter: grayscale(1) brightness(.6) drop-shadow(0 6px 5px rgba(0, 0, 0, .5)); }
+/* ★は丸の下に弧を描くように */
+.node-stars {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  display: flex;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+.node-stars img { width: 22px; height: 22px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .6)); }
+.node-stars img:nth-child(2) { transform: translateY(4px); }
+.type-badge { z-index: 3; top: -8px; right: -10px; font-size: 22px; }
+.new-tag { z-index: 3; top: -12px; left: -30px; }
+.map-node.unlocked-now .node-disc { animation: unlockPop .6s cubic-bezier(.3, 1.8, .5, 1), nodeGlow 1.2s ease-in-out .6s infinite; }
+@keyframes unlockPop { 0% { transform: scale(.3); } }
+
+/* 今いるレベルのヒーローと「▼」 */
+.map-hero-wrap {
+  position: absolute;
+  z-index: 7;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.map-hero-wrap .map-hero {
+  position: static;
+  width: 70px;
+  transform: none;
+  animation: heroHop2 .9s ease-in-out infinite;
+  filter: drop-shadow(0 8px 5px rgba(0, 0, 0, .5));
+}
+.map-hero-wrap.walking .map-hero { animation: heroWalk .25s ease-in-out infinite; }
+.map-pointer {
+  font-size: 22px;
+  color: #ffd23f;
+  text-shadow: 0 2px 0 #8f5200, 0 0 8px rgba(0, 0, 0, .5);
+  animation: pointerBounce .7s ease-in-out infinite;
+}
+@keyframes heroHop2 { 50% { transform: translateY(-8px); } }
+@keyframes heroWalk { 50% { transform: translateY(-10px) rotate(-6deg); } }
+@keyframes pointerBounce { 50% { transform: translateY(6px); } }
+
+/* 画面下の大きなプレイボタン */
+.map-play-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  width: 100%;
+  margin-top: -90px;
+  padding: 12px 16px 16px;
+  background: linear-gradient(transparent, rgba(8, 16, 36, .9) 40%);
+  display: flex;
+  justify-content: center;
+}
+.map-play {
+  width: min(320px, 100%);
+  font-size: 22px;
+  background: linear-gradient(#5fe07a, #1f9d3a);
+  box-shadow: 0 6px 0 #0f5e21, 0 10px 16px rgba(0, 0, 0, .4);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* レベルのプレビュー */
+.lv-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .55);
+}
+.lv-preview.hidden { display: none; }
+.lp-card {
+  position: relative;
+  width: min(310px, calc(100% - 40px));
+  padding: 44px 18px 20px;
+  border-radius: 22px;
+  background: linear-gradient(#fffaf0, #f3e3c2);
+  border: 4px solid #c99a4b;
+  box-shadow: 0 10px 0 #8a6428, 0 18px 30px rgba(0, 0, 0, .5);
+  color: var(--text);
+  text-align: center;
+  animation: panelIn .3s;
+}
+.lp-ribbon {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 86%;
+  padding: 10px 0 12px;
+  background: url("img/ui/ribbon.webp") center / 100% 100% no-repeat;
+  font-size: 26px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 0 #7a0f0f;
+}
+.lp-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #d9534f;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  box-shadow: 0 3px 0 #8a2320;
+  cursor: pointer;
+}
+.lp-type { font-size: 15px; line-height: 1.5; margin: 6px 0 10px; }
+.lp-type b { font-size: 18px; }
+.lp-stars { display: flex; justify-content: center; gap: 4px; margin-bottom: 8px; }
+.lp-stars img { width: 50px; height: 50px; object-fit: contain; }
+.lp-stars img:nth-child(2) { transform: translateY(-8px); }
+.lp-info { font-size: 14px; margin-bottom: 16px; line-height: 1.6; }
+.lp-info b { color: #2458b8; font-size: 17px; }
+.lp-new { color: #ff3b6b; font-weight: 900; }
+.lp-play { width: 100%; font-size: 24px; background: linear-gradient(#5fe07a, #1f9d3a); box-shadow: 0 6px 0 #0f5e21; }
