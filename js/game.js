@@ -101,8 +101,9 @@ function startLevel(lv) {
   state.over = false;
   state.evolveIdx = 0;
   state.combo = 0;
-  state.levelCoins = 0;      // ？ボックスとコンボで拾った金貨
-  state.comboCoins = 0;      // そのうちコンボの分（クリア画面に出す）
+  state.levelCoins = 0;      // ？ボックスで拾った金貨
+  state.comboPower = 0;      // コンボで上乗せしたパワーの合計（クリア画面に出す）
+  state.comboGain = 0;       // 今の1体のコンボ上乗せ分
   state.tool = null;         // 使用中のアイテム（ハンマー）
   state.scope = false;       // 水晶玉を使ったか
   clearQueue();
@@ -929,9 +930,10 @@ async function killAnimation(cell, floorEl) {
   fxBurst(CONFIG.fx.kill, floorEl, big ? 1.6 : 1.1);
   if (state.combo >= 2) {
     Sound.sfx.combo(Math.min(state.combo, 8));
-    const bonus = CONFIG.comboCoins(state.lv, state.combo);
-    if (bonus) { state.levelCoins += bonus; state.comboCoins += bonus; }
-    popText(`COMBO ×${state.combo}${bonus ? `  🪙+${bonus}` : ''}`, floorEl, false, 'combo');
+    // コンボのパワー上乗せ（倒した敵のパワー × 割合）。onTap で after に足す
+    state.comboGain = Math.floor(cell.value * CONFIG.comboRate(state.combo));
+    state.comboPower += state.comboGain;
+    popText(`COMBO ×${state.combo}${state.comboGain ? `  +${fmt(state.comboGain)}` : ''}`, floorEl, false, 'combo');
     if (state.combo === 5 || state.combo === 10) {   // 節目はさらに派手に
       Sound.sfx.win();
       sparks(center, 30, ['#ffe066', '#ffb03b', '#fff'], 120);
@@ -991,7 +993,7 @@ async function doTap(cell, floorEl) {
   state.pendingCell = cell;
   state.history.push({
     power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id,
-    evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboCoins: state.comboCoins,
+    evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboPower: state.comboPower,
   });
 
   // 通ったエリアをたどって、目的のマスの隣まで歩く
@@ -1032,7 +1034,9 @@ async function doTap(cell, floorEl) {
       return lose(cell);
     }
     if (cell.boss) await bossStrikes(cell, floorEl);
+    state.comboGain = 0;
     await killAnimation(cell, floorEl);
+    after += state.comboGain;   // コンボの上乗せ
   } else if (cell.type === 'poison' || cell.type === 'bomb') {
     // ☠ はパワー半分、💣 は −N（取れる前に力尽きることがある）→ このあと爆風
     const bomb = cell.type === 'bomb';
@@ -1179,7 +1183,7 @@ async function openMystery(cell, floorEl) {
 
 // ============================================================
 //  アイテム（金貨で買って、ステージ中に使う）
-//  🔨 ハンマー：行ける部屋の敵を1体倒す（パワーは増えない）
+//  🔨 ハンマー：行ける部屋の敵を1体倒す（その敵のパワーの半分をもらう）
 //  🧪 大回復薬：パワー1.5倍
 //  🔮 水晶玉：？ボックスの中身と暗闇の部屋が見える
 //  🛡 盾：負けそうなとき自動で1回守る
@@ -1209,7 +1213,7 @@ function useItem(key) {
     state.tool = state.tool === 'hammer' ? null : 'hammer';
     markHammerTargets();
     renderItemBar();
-    if (state.tool) showTip('🔨 壊したい敵をタップ！（光っている部屋の敵。ボス以外）<br>もう一度ハンマーを押すとやめる', 0);
+    if (state.tool) showTip('🔨 壊したい敵をタップ！（光っている部屋の敵。ボス以外）パワーの半分をもらえる<br>もう一度ハンマーを押すとやめる', 0);
     else hideTip();
     return;
   }
@@ -1217,7 +1221,7 @@ function useItem(key) {
   persist();
   if (key === 'potion') {
     // 1手戻すで元のパワーに戻せるよう、履歴に残す
-    state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: null, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboCoins: state.comboCoins });
+    state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: null, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboPower: state.comboPower });
     const add = Math.ceil(state.power * 0.5);
     state.power += add;
     fxBurst(CONFIG.fx.potion, state.heroFloorEl, 1.8);
@@ -1254,7 +1258,7 @@ async function hammerSmash(cell) {
   persist();
   renderItemBar();
   state.busy = true;
-  state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboCoins: state.comboCoins });
+  state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboPower: state.comboPower });
   followFloor(cell.el, 300);
   // 大きなハンマーが上から振り下ろされる
   const p = worldPos(cell.el);
@@ -1276,7 +1280,16 @@ async function hammerSmash(cell) {
   popText('SMASH!', cell.el, false, 'crit');
   cell.cleared = true;
   cell.el.classList.add('cleared');
-  await wait(450);
+  await wait(300);
+  // 倒した敵のパワーの半分をもらう（全部だと強い敵を一撃で丸ごと吸収できて強すぎる）
+  const gain = Math.floor(cell.value * CONFIG.hammerGain);
+  if (gain > 0) {
+    absorbOrbs(p, 6);
+    state.power += gain;
+    popText('+' + fmt(gain), cell.el, false, 'big');
+    Sound.sfx.hit();
+  }
+  await wait(300);
   updatePower();
   updateArrows();
   updateUndo();
@@ -1350,7 +1363,7 @@ function undo() {
     c.unit.classList.remove('dying', 'ko', 'hit');
   });
   state.levelCoins = h.levelCoins || 0;
-  state.comboCoins = h.comboCoins || 0;
+  state.comboPower = h.comboPower || 0;
   state.combo = 0;
   state.power = h.power;
   state.heroFloorEl = h.heroFloorEl;
@@ -1444,7 +1457,7 @@ async function win() {
     body: `最終パワー <b id="final-power">0</b>
       <div class="sub-line">★3の目安 ${fmt(Math.ceil(state.best * CONFIG.star3))}</div>
       <div class="sub-line">${perfect ? '🏆 全部屋制覇！ 金貨ボーナス +50%' : `寄り道していない部屋：${left}`}</div>
-      ${state.comboCoins ? `<div class="sub-line">🔥 コンボボーナス 🪙+${fmt(state.comboCoins)}</div>` : ''}
+      ${state.comboPower ? `<div class="sub-line">🔥 コンボボーナス パワー +${fmt(state.comboPower)}</div>` : ''}
       <div class="coin-line"><img src="${IMG('items', 'coins')}" alt="">+${coins}</div>
       ${homeCard}`,
     buttons: [
