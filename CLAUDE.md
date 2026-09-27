@@ -22,6 +22,8 @@
   - クリア条件は「ボスを倒す」。ほかの部屋は寄り道自由（全部屋クリア後にボスを倒すと PERFECT）。
   - `bestPlan()` / `bestScore()` は「どこまで寄り道してからボスに挑むか・どの罠を避けるか」を何百通りか試して最高パワーの目安を出し、★評価（`CONFIG.star3` / `star2`）と負けたときのヒントに使う。
   - ？ボックス（type `mystery`）は中身 `content` を生成時に決めておく。効果はパワーに対する割合なので、開けて即負けにはならない。
+- コンボ（敵を続けて倒す）：×3 から金貨ボーナス（`CONFIG.comboCoins`、×5・×10 は上乗せ）。パワーは増やさない（パズルとクリアの保証がくずれるため）。クリア画面に「🔥 コンボボーナス」。
+- 数字の札：はしごは塔の中（z-index 3）に置き、`.unit` は z-index 4 で手前。桁が多い札は `data-len` で文字を小さくして部屋の幅に収める。
 - 画像は `img/`（WebP・軽量）を使う。原本は `assets/`。原本を追加・変更したら `python tools/optimize.py` で `img/` を作り直す。
 - セーブは localStorage（キー `powerTower.v2`）。解放レベル・★・金貨・ショップ強化・アイテムの数（`save.items`）・既読ヒントなど。
 - ホーム画面に追加の案内は game.js の「ホーム画面に追加（PWA）」の節。Android は beforeinstallprompt、iPhone は手順を表示、LINE などアプリ内ブラウザは「ブラウザで開いて」。すすめるレベルは `CONFIG.homeAskAt`、ホーム画面から初回起動のお礼は `CONFIG.homeGift`。iPhone のホーム画面版はセーブが Safari と別になる点に注意。

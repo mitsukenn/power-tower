@@ -342,6 +342,7 @@ html, body {
 /* ===== ユニット（敵・アイテム・ヒーロー共通） ===== */
 .unit {
   position: relative;
+  z-index: 4;          /* はしご（塔の中で z-index 3）より手前。大きな数字の頭がはしごに隠れないように */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -885,6 +886,11 @@ html, body {
 .unit.mon .val::before { content: '🔒'; font-size: .75em; margin-right: 2px; }
 .unit.mon.weak .val::before { content: '⚔'; }
 .unit.trap.deadly .val::before { content: '⚠'; font-size: .8em; margin-right: 2px; }
+/* 桁の多い数字は小さく・横の余白をつめて、部屋の幅に収める（頭の数字が隠れないように） */
+.unit .val { white-space: nowrap; }
+.unit .val[data-len="5"] { font-size: calc(var(--u) * .26); padding: 2px 5px; }
+.unit .val[data-len="6"] { font-size: calc(var(--u) * .23); padding: 2px 4px; }
+.unit .val[data-len="7"], .unit .val[data-len="8"] { font-size: calc(var(--u) * .2); padding: 2px 3px; }
 
 /* ===== ボス ===== */
 .hpbar {

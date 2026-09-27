@@ -101,7 +101,8 @@ function startLevel(lv) {
   state.over = false;
   state.evolveIdx = 0;
   state.combo = 0;
-  state.levelCoins = 0;      // ？ボックスで拾った金貨
+  state.levelCoins = 0;      // ？ボックスとコンボで拾った金貨
+  state.comboCoins = 0;      // そのうちコンボの分（クリア画面に出す）
   state.tool = null;         // 使用中のアイテム（ハンマー）
   state.scope = false;       // 水晶玉を使ったか
   clearQueue();
@@ -222,7 +223,10 @@ function makeUnit(cell) {
   const body = cell.type === 'mystery'
     ? '<span class="qbox">?</span>'
     : lookHtml(cell.type === 'monster' ? cell.look : CONFIG.items[cell.type]);
-  u.innerHTML = `${hp}${body}<span class="val">${labels[cell.type]()}</span>`;
+  const text = labels[cell.type]();
+  // 桁が多いと部屋の幅に収まらず頭の数字が隠れるので、文字数に応じて小さくする（style.css の .val[data-len]）
+  const len = [...String(text)].length + (cell.type === 'monster' || cell.type === 'bomb' ? 1 : 0);   // 🔒・⚠ の分
+  u.innerHTML = `${hp}${body}<span class="val" data-len="${Math.min(len, 8)}">${text}</span>`;
   u.style.setProperty('--bob-delay', (-Math.random() * 1.8).toFixed(2) + 's');
   cell.unit = u;
   return u;
@@ -656,18 +660,20 @@ function buildBridges() {
     world.appendChild(br);
   };
   // はしご：下の部屋の真ん中あたりから上の部屋の真ん中あたりまで、部屋の左端に立てかける
+  // 塔の中に置いて、数字の札（.unit .val）より奥に描く（大きな数字の頭がはしごに隠れないように）
   const ladder = (lower, upper) => {
     const aKey = cellKey(lower.t, lower.f), bKey = cellKey(upper.t, upper.f);
     if (!edges.has(edgeKey(aKey, bKey))) return;
-    const rl = worldRect(lower.el), ru = worldRect(upper.el);
+    const towerEl = lower.el.closest('.tower');
+    const rt = worldRect(towerEl), rl = worldRect(lower.el), ru = worldRect(upper.el);
     const ld = document.createElement('div');
     ld.className = 'ladder';
     ld.dataset.a = aKey;
     ld.dataset.b = bKey;
-    ld.style.left = (rl.left + 3) + 'px';
-    ld.style.top = (ru.top + ru.height * 0.45) + 'px';
+    ld.style.left = (rl.left - rt.left + 3) + 'px';
+    ld.style.top = (ru.top - rt.top + ru.height * 0.45) + 'px';
     ld.style.height = (rl.top - ru.top) + 'px';
-    world.appendChild(ld);
+    towerEl.appendChild(ld);
   };
   bridge('home', '0,0', $('home'), towers[0][0].el);
   towers.forEach((floors, t) => floors.forEach((c, f) => {
@@ -923,7 +929,13 @@ async function killAnimation(cell, floorEl) {
   fxBurst(CONFIG.fx.kill, floorEl, big ? 1.6 : 1.1);
   if (state.combo >= 2) {
     Sound.sfx.combo(Math.min(state.combo, 8));
-    popText(`COMBO ×${state.combo}`, floorEl, false, 'combo');
+    const bonus = CONFIG.comboCoins(state.lv, state.combo);
+    if (bonus) { state.levelCoins += bonus; state.comboCoins += bonus; }
+    popText(`COMBO ×${state.combo}${bonus ? `  🪙+${bonus}` : ''}`, floorEl, false, 'combo');
+    if (state.combo === 5 || state.combo === 10) {   // 節目はさらに派手に
+      Sound.sfx.win();
+      sparks(center, 30, ['#ffe066', '#ffb03b', '#fff'], 120);
+    }
   }
   await wait(120);
 
@@ -979,7 +991,7 @@ async function doTap(cell, floorEl) {
   state.pendingCell = cell;
   state.history.push({
     power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id,
-    evolveIdx: state.evolveIdx, levelCoins: state.levelCoins,
+    evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboCoins: state.comboCoins,
   });
 
   // 通ったエリアをたどって、目的のマスの隣まで歩く
@@ -1180,7 +1192,7 @@ function useItem(key) {
   persist();
   if (key === 'potion') {
     // 1手戻すで元のパワーに戻せるよう、履歴に残す
-    state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: null, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins });
+    state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: null, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboCoins: state.comboCoins });
     const add = Math.ceil(state.power * 0.5);
     state.power += add;
     fxBurst(CONFIG.fx.potion, state.heroFloorEl, 1.8);
@@ -1217,7 +1229,7 @@ async function hammerSmash(cell) {
   persist();
   renderItemBar();
   state.busy = true;
-  state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins });
+  state.history.push({ power: state.power, heroFloorEl: state.heroFloorEl, cellId: cell.id, evolveIdx: state.evolveIdx, levelCoins: state.levelCoins, comboCoins: state.comboCoins });
   followFloor(cell.el, 300);
   // 大きなハンマーが上から振り下ろされる
   const p = worldPos(cell.el);
@@ -1313,6 +1325,7 @@ function undo() {
     c.unit.classList.remove('dying', 'ko', 'hit');
   });
   state.levelCoins = h.levelCoins || 0;
+  state.comboCoins = h.comboCoins || 0;
   state.combo = 0;
   state.power = h.power;
   state.heroFloorEl = h.heroFloorEl;
@@ -1406,6 +1419,7 @@ async function win() {
     body: `最終パワー <b id="final-power">0</b>
       <div class="sub-line">★3の目安 ${fmt(Math.ceil(state.best * CONFIG.star3))}</div>
       <div class="sub-line">${perfect ? '🏆 全部屋制覇！ 金貨ボーナス +50%' : `寄り道していない部屋：${left}`}</div>
+      ${state.comboCoins ? `<div class="sub-line">🔥 コンボボーナス 🪙+${fmt(state.comboCoins)}</div>` : ''}
       <div class="coin-line"><img src="${IMG('items', 'coins')}" alt="">+${coins}</div>
       ${homeCard}`,
     buttons: [
