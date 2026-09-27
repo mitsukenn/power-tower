@@ -1679,6 +1679,8 @@ html, body {
   animation: btnIn .5s 1.2s both;
 }
 .games-btn:active { transform: translateY(2px); }
+/* リンクの前のアイコン（絵文字は使わない） */
+.lk-ic { width: 24px; height: 24px; margin: -5px 4px -5px -2px; vertical-align: middle; }
 .overlay.a2hs { position: fixed; z-index: 40; }
 .a2hs-panel { position: relative; padding-top: 20px; }
 .a2hs-icon { width: 64px; height: 64px; border-radius: 16px; box-shadow: 0 4px 10px rgba(0, 0, 0, .3); }
