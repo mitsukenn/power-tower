@@ -644,6 +644,9 @@ html, body {
 .panel-btns { display: flex; flex-direction: column; gap: 12px; }
 .panel-btn.sub { font-size: 15px; background: linear-gradient(#9aa7bd, #6b7890); box-shadow: 0 5px 0 #475163; }
 .panel-btn:disabled { filter: grayscale(1); opacity: .6; }
+/* クリア画面の下の小さなリンク（感想ページ。セーブ済みなので同じタブで開く） */
+.panel-link { display: inline-block; margin-top: 16px; font-size: 14px; font-weight: 800; color: #2458b8; text-decoration: none; }
+.panel-link.hidden { display: none; }
 .stars { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px; }
 .stars.hidden { display: none; }
 .stars img { width: 60px; height: 60px; object-fit: contain; }
@@ -828,6 +831,19 @@ html, body {
 .buy-btn img { width: 22px; }
 .buy-btn:disabled { filter: grayscale(1); opacity: .6; cursor: default; }
 .shop-note { font-size: 13px; text-align: center; padding: 0 16px; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+/* 感想ページへのリンク（見た目は「ホーム画面に追加」ボタンと同じ） */
+.feedback-btn {
+  margin: 4px 0 calc(20px + env(safe-area-inset-bottom));
+  padding: 8px 16px;
+  border: 2px solid rgba(255, 255, 255, .85);
+  border-radius: 99px;
+  background: rgba(0, 0, 0, .35);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  text-decoration: none;
+}
+.feedback-btn:active { transform: translateY(2px); }
 
 /* ===== 手前の飾り（ステージより速く動く） ===== */
 .fg { z-index: 4; }

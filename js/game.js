@@ -1339,8 +1339,9 @@ function undo() {
 // ============================================================
 //  クリア / 負け
 // ============================================================
-function showOverlay({ title, stars = 0, body, buttons }) {
+function showOverlay({ title, stars = 0, body, buttons, feedback = false }) {
   $('overlay-title').textContent = title;
+  $('overlay-feedback').classList.toggle('hidden', !feedback);   // 感想ページへのリンク（クリア時だけ）
   $('overlay-body').innerHTML = body;
   const starBox = $('overlay-stars');
   starBox.classList.toggle('hidden', !stars);
@@ -1396,6 +1397,7 @@ async function win() {
   persist();
 
   const left = state.cells.filter(c => !c.cleared).length;
+  const homeCard = addHomeCard(lv, first);
   showOverlay({
     title: perfect ? 'PERFECT!' : 'CLEAR!',
     stars,
@@ -1403,11 +1405,12 @@ async function win() {
       <div class="sub-line">★3の目安 ${fmt(Math.ceil(state.best * CONFIG.star3))}</div>
       <div class="sub-line">${perfect ? '🏆 全部屋制覇！ 金貨ボーナス +50%' : `寄り道していない部屋：${left}`}</div>
       <div class="coin-line"><img src="${IMG('items', 'coins')}" alt="">+${coins}</div>
-      ${addHomeCard(lv, first)}`,
+      ${homeCard}`,
     buttons: [
       { text: '次へ ▶', onClick: () => { state.introToken++; renderSelect({ advanceFrom: lv }); } },
       { text: stars < 3 ? 'もう一度（★3を目指す）' : 'もう一度', cls: 'sub', onClick: () => startLevel(lv) },
     ],
+    feedback: !homeCard,   // 「ホーム画面に追加」を出すときは画面が狭くなるので出さない
   });
   countUp($('final-power'), state.power, 900);
 }
