@@ -80,6 +80,7 @@ const Sound = (() => {
     win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 140, 'square', 0.05, i * 0.11)),
     evolve: () => [523, 784, 1047, 1568].forEach((f, i) => tone(f, 160, 'triangle', 0.07, i * 0.08)),
     click: () => tone(900, 40, 'square', 0.03),
+    tick: i => tone(760 + (i % 4) * 90, 35, 'square', 0.025),   // ？ボックスのルーレット
     undo: () => [700, 500].forEach((f, i) => tone(f, 80, 'triangle', 0.05, i * 0.06)),
   };
 

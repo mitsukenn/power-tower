@@ -1121,12 +1121,37 @@ async function bombBlast(bomb, floorEl) {
 }
 
 // ？ボックスを開ける：箱が揺れて、中身が飛び出す
+// ？ボックスのルーレット：中身の候補の絵が次々に入れかわり、だんだん遅くなって本当の中身で止まる
+//（中身はレベルを作ったときに決まっている。クリアできる保証はそのまま。止まる所だけの演出）
+async function mysteryRoulette(cell, box) {
+  const val = cell.unit.querySelector('.val');
+  const keys = Object.keys(CONFIG.mysteryLook);
+  const steps = 14;
+  let prev = null;
+  box.classList.remove('shaking');
+  box.classList.add('roulette');
+  for (let i = 0; i < steps; i++) {
+    let k = i === steps - 1 ? cell.content : keys[Math.floor(Math.random() * keys.length)];
+    if (k === prev && i < steps - 1) k = keys[(keys.indexOf(k) + 1) % keys.length];   // 同じ絵が続かないように
+    prev = k;
+    const L = CONFIG.mysteryLook[k];
+    box.innerHTML = L.img ? `<img src="${L.img}" alt="" draggable="false">` : L.emoji;
+    val.textContent = L.label;
+    Sound.sfx.tick(i);
+    await wait(sp(35 + i * i * 1.3));   // だんだん遅く（全体で1.5秒ほど）
+  }
+  box.classList.add('stop');
+  await wait(sp(260));
+}
+
 async function openMystery(cell, floorEl) {
   const m = CONFIG.mysteryLook[cell.content];
   const box = cell.unit.querySelector('.qbox');
   box.classList.add('shaking');
   Sound.sfx.jump();
   await wait(420);
+  // 水晶玉で中身を見ていなければ、ルーレットを回してから見せる
+  if (!cell.unit.classList.contains('peeked')) await mysteryRoulette(cell, box);
   // 中身を見せる
   box.outerHTML = lookHtml(m);
   cell.unit.querySelector('.val').textContent = m.label;

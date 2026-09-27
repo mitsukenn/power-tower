@@ -1042,6 +1042,9 @@ html, body {
 @keyframes qboxGlow {
   50% { transform: translateY(-4px) rotate(-4deg); box-shadow: inset 0 0 0 3px #fff3b0, inset -4px -5px 0 rgba(0, 0, 0, .2), 0 8px 0 #8a4b00, 0 0 22px rgba(255, 230, 120, 1); }
 }
+.qbox.roulette { animation: none !important; box-shadow: 0 0 0 3px #fff, 0 0 14px 4px rgba(255, 214, 80, .9); }
+.qbox.roulette img { width: 80%; height: 80%; object-fit: contain; }
+.qbox.roulette.stop { transform: scale(1.15); transition: transform .15s; }
 .qbox.shaking { animation: qboxShake calc(.42s * var(--spd, 1)) ease-in-out !important; }
 @keyframes qboxShake {
   15% { transform: rotate(-14deg) scale(1.05); }
