@@ -47,6 +47,12 @@ function loadSave() {
 }
 
 const save = loadSave();
+// 「1手戻す」が何回でも使えるようになったので、以前ショップで買った「回数アップ」の金貨を払い戻す
+if (save.up.undo > 0) {
+  for (let n = 0; n < save.up.undo; n++) save.coins += CONFIG.shop.undo.cost(n);
+  save.up.undo = 0;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {}
+}
 let demoMode = false;   // スクリーンショット用の見せかけの進み具合のときは保存しない
 function persist() {
   if (demoMode) return;
@@ -68,7 +74,6 @@ const state = {
   moving: false,             // ヒーローが移動・戦闘中
   over: false,
   history: [],               // 1手戻す用
-  undoLeft: 0,
   evolveIdx: 0,
   justDragged: false,
   introToken: 0,
@@ -95,7 +100,6 @@ function startLevel(lv) {
   state.cells = state.level.towers.flat();
   state.best = Math.max(bestScore(state.cells, state.start, 300, null, state.level.edges), 1);
   state.history = [];
-  state.undoLeft = CONFIG.undoPerLevel + save.up.undo;
   state.busy = false;
   state.moving = false;
   state.over = false;
@@ -1339,14 +1343,12 @@ async function useShield(cell) {
 //  1手戻す
 // ============================================================
 function updateUndo() {
-  $('undo-count').textContent = state.undoLeft;
-  $('undo-btn').disabled = state.undoLeft <= 0 || !state.history.length || state.moving;
+  $('undo-btn').disabled = !state.history.length || state.moving;   // 何回でも使える
 }
 
 function undo() {
-  if (state.moving || !state.history.length || state.undoLeft <= 0) return;
+  if (state.moving || !state.history.length) return;
   const h = state.history.pop();
-  state.undoLeft--;
   const cell = h.cellId == null ? null : state.cells.find(c => c.id === h.cellId);
   if (cell && cell.cleared) {
     cell.cleared = false;
@@ -1508,7 +1510,7 @@ async function lose(cell) {
     title: 'おしい！',
     body,
     buttons: [
-      { text: `↶ 1手戻す（あと${state.undoLeft}回）`, disabled: state.undoLeft <= 0, onClick: undo },
+      { text: '↶ 1手戻す', disabled: !state.history.length, onClick: undo },
       { text: '最初から', cls: 'sub', onClick: () => startLevel(state.lv) },
     ],
   });
@@ -1892,10 +1894,6 @@ function renderShop() {
     {
       key: 'power', icon: IMG('hero', 'aura_gold'), name: 'スタートパワー強化',
       desc: n => `開始パワー ${CONFIG.startPower + n * CONFIG.shop.power.add} → ${CONFIG.startPower + (n + 1) * CONFIG.shop.power.add}`,
-    },
-    {
-      key: 'undo', icon: IMG('items', 'hourglass'), name: '1手戻す回数アップ',
-      desc: n => `1レベルで ${CONFIG.undoPerLevel + n} → ${CONFIG.undoPerLevel + n + 1} 回`,
     },
   ];
   const list = $('shop-list');
