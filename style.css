@@ -723,6 +723,13 @@ html, body {
   animation: bob 1.8s ease-in-out infinite;
 }
 .title-btns { display: flex; flex-direction: column; gap: 14px; width: min(300px, 100%); }
+/* 背の低い画面（iPhone SE など）では王さまを小さくして、ボタンとリンクまで1画面に収める */
+@media (max-height: 700px) {
+  #title .logo { font-size: 50px; }
+  .title-hero { width: min(56vw, 220px, 22vh); }
+  .title-links .a2hs-btn { padding: 6px 10px; font-size: 13px; }
+  .title-links .games-btn { padding: 6px 8px; font-size: 13px; }
+}
 .big-btn {
   font-size: 22px;
   font-weight: 900;
@@ -1647,6 +1654,22 @@ html, body {
 }
 .a2hs-btn:active { transform: translateY(2px); }
 .a2hs-btn.hidden { display: none; }
+/* 「ホーム画面に追加」と「ほかのゲーム」を1行に並べる（背の低い画面でも1画面に収める） */
+.title-links { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 10px; }
+/* AIゲーム実験室のトップ（ほかのゲーム一覧）へ戻るリンク */
+.games-btn {
+  margin-top: 4px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+  animation: btnIn .5s 1.2s both;
+}
+.games-btn:active { transform: translateY(2px); }
 .overlay.a2hs { position: fixed; z-index: 40; }
 .a2hs-panel { position: relative; padding-top: 20px; }
 .a2hs-icon { width: 64px; height: 64px; border-radius: 16px; box-shadow: 0 4px 10px rgba(0, 0, 0, .3); }
