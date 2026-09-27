@@ -19,6 +19,12 @@ function fmt(n) {
   return String(n);
 }
 
+// プレイ回数の集計（AIゲーム実験室の全ゲーム共通）。失敗しても遊ぶのには関係ない
+const PLAY_API = 'https://script.google.com/macros/s/AKfycbyNh85RNVYJM1_cn5vn6d4_lFm-3_9MeQZe1vMGU4xk-fHRvGbbGUIgkgI2QUXhYyySMw/exec';
+function countPlay() {
+  try { fetch(PLAY_API, { method: 'POST', mode: 'no-cors', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ type: 'play', game: 'power' }) }).catch(() => {}); } catch (e) {}
+}
+
 // ============================================================
 //  セーブデータ（ブラウザの localStorage）
 // ============================================================
@@ -81,6 +87,7 @@ function showScreen(name) {
 //  レベル開始
 // ============================================================
 function startLevel(lv) {
+  countPlay();   // レベルを1つ始める（もう一度・最初からも含む）＝1回遊ぶ
   state.lv = lv;
   state.start = CONFIG.startPower + save.up.power * CONFIG.shop.power.add;
   state.power = state.start;
