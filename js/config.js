@@ -36,9 +36,9 @@ const CONFIG = {
   potionRate: 0.1,                 // 回復薬（+N）の割合
   potionRatio: [0.15, 0.35],
   doubles: lv => (lv < 3 ? 0 : Math.min(1 + Math.floor((lv - 3) / 6), 3)),   // ×2 の数（後で取るほど得）
-  bombs: lv => (lv < 5 ? 0 : Math.min(1 + Math.floor((lv - 5) / 8), 3)),     // 💣 パワー半分（早めに取ると被害が小さい）
-  poisons: lv => (lv < 8 ? 0 : Math.min(1 + Math.floor((lv - 8) / 10), 3)),  // ☠ −N（弱いうちに取ると力尽きる）
-  poisonRatio: [0.3, 0.45],
+  bombs: lv => (lv < 5 ? 0 : Math.min(1 + Math.floor((lv - 5) / 8), 3)),     // 💣 −N。でも隣の敵を吹き飛ばして、そのパワーをもらえる（弱いうちに取ると力尽きる）
+  poisons: lv => (lv < 8 ? 0 : Math.min(1 + Math.floor((lv - 8) / 10), 3)),  // ☠ パワー半分（早めに取ると被害が小さい）
+  bombRatio: [0.3, 0.45],          // 💣 の −N は、そのときのパワーのこの割合
 
   // ？ボックス：開けるまで中身が分からない部屋。中身はパワーに対する割合で効くので、開けて即負けにはならない
   mysteries: lv => (lv < 4 ? 0 : Math.min(1 + Math.floor((lv - 4) / 6), 4)),
@@ -46,8 +46,8 @@ const CONFIG = {
     ['double', 2],           // ✨ パワー2倍
     ['plus', 3],             // 💰 パワー +40%
     ['coin', 2],             // 🪙 金貨（パワーは変わらない）
-    ['bomb', 2],             // 💣 パワー半分
-    ['minus', 2],            // ➖ パワー −25%
+    ['bomb', 2],             // 💣 パワー −25%、でも隣の敵を吹き飛ばしてもらう
+    ['minus', 2],            // ☠ パワー半分
   ],
   mysteryCoins: lv => 10 + lv * 3,
   homeGift: 100,             // ホーム画面から初めて開いたときのプレゼント（金貨）
@@ -111,8 +111,8 @@ const CONFIG = {
     double: { img: IMG('items', 'star'), emoji: '✨', label: '×2!', fx: 'level_up', good: true },
     plus: { img: IMG('items', 'coin_bag'), emoji: '💰', label: '+40%', fx: 'heal', good: true },
     coin: { img: IMG('items', 'coins'), emoji: '🪙', label: '金貨!', fx: 'coin_burst', good: true },
-    bomb: { img: IMG('items', 'bomb'), emoji: '💣', label: '÷2…', fx: 'pink_explosion', good: false },
-    minus: { img: IMG('items', 'poison'), emoji: '➖', label: '−25%', fx: 'poison_smoke', good: false },
+    bomb: { img: IMG('items', 'bomb'), emoji: '💣', label: '−25%', fx: 'pink_explosion', good: false },
+    minus: { img: IMG('items', 'poison'), emoji: '☠️', label: '÷2…', fx: 'poison_smoke', good: false },
   },
   fx: {
     kill: IMG('effects', 'explosion'),

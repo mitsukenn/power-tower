@@ -209,8 +209,8 @@ function makeUnit(cell) {
     monster: () => fmt(cell.value),
     potion: () => '+' + fmt(cell.value),
     double: () => '×2',
-    bomb: () => '÷2',
-    poison: () => '−' + fmt(cell.value),
+    bomb: () => '−' + fmt(cell.value),
+    poison: () => '÷2',
     mystery: () => '？',
   };
   const kind = { monster: 'mon', potion: 'item', double: 'item', bomb: 'trap', poison: 'trap', mystery: 'mystery' }[cell.type];
@@ -574,12 +574,12 @@ async function checkEvolve() {
   setHeroPose('idle');
 }
 
-// パワー表示と、数字の色（勝てる=緑 / 勝てない=赤、毒で力尽きる=赤）を更新
+// パワー表示と、数字の色（勝てる=緑 / 勝てない=赤、爆弾で力尽きる=赤）を更新
 function updatePower() {
   $('hero-power').textContent = fmt(state.power);
   state.cells.forEach(cell => {
     if (cell.type === 'monster') cell.unit.classList.toggle('weak', cell.value < state.power);
-    if (cell.type === 'poison') cell.unit.classList.toggle('deadly', cell.value >= state.power);
+    if (cell.type === 'bomb') cell.unit.classList.toggle('deadly', cell.value >= state.power);
   });
   updateReach();
   updateMinimap();
@@ -1021,27 +1021,29 @@ async function doTap(cell, floorEl) {
     }
     if (cell.boss) await bossStrikes(cell, floorEl);
     await killAnimation(cell, floorEl);
-  } else if (cell.type === 'poison') {
+  } else if (cell.type === 'poison' || cell.type === 'bomb') {
+    // ☠ はパワー半分、💣 は −N（取れる前に力尽きることがある）→ このあと爆風
+    const bomb = cell.type === 'bomb';
     state.combo = 0;
-    fxBurst(CONFIG.fx.poison, floorEl);
+    fxBurst(bomb ? CONFIG.fx.bomb : CONFIG.fx.poison, floorEl, bomb ? 1.5 : 1);
     if (after === null) {
       if (await useShield(cell)) return;
       return lose(cell);
     }
     cell.unit.classList.add('dying');
-    popText('−' + fmt(cell.value), floorEl, true);
-    Sound.sfx.poison();
+    popText(bomb ? '−' + fmt(cell.value) : '÷2…', floorEl, true);
+    Sound.sfx[cell.type]();
+    if (bomb) shakeStage();
   } else if (cell.type === 'mystery') {
     state.combo = 0;
     await openMystery(cell, floorEl);
   } else {
     state.combo = 0;
     cell.unit.classList.add('dying');
-    const fx = { potion: ['+' + fmt(cell.value || 0), 'potion'], double: ['×2!', 'double'], bomb: ['÷2…', 'bomb'] }[cell.type];
-    fxBurst(CONFIG.fx[fx[1]], floorEl, cell.type === 'bomb' ? 1.5 : 1);
-    popText(fx[0], floorEl, cell.type === 'bomb');
+    const fx = { potion: ['+' + fmt(cell.value || 0), 'potion'], double: ['×2!', 'double'] }[cell.type];
+    fxBurst(CONFIG.fx[fx[1]], floorEl, 1);
+    popText(fx[0], floorEl, false);
     Sound.sfx[cell.type]();
-    if (cell.type === 'bomb') shakeStage();
   }
 
   // 💣の爆風：つながったとなりの敵をまとめて吹き飛ばして吸収
@@ -1421,8 +1423,8 @@ function describeCell(c) {
     case 'monster': return `「${fmt(c.value)}」の敵`;
     case 'potion': return `回復薬（+${fmt(c.value)}）`;
     case 'double': return '✨×2';
-    case 'bomb': return '💣爆弾';
-    case 'poison': return `☠毒（−${fmt(c.value)}）`;
+    case 'bomb': return `💣爆弾（−${fmt(c.value)}）`;
+    case 'poison': return '☠毒（パワー半分）';
     case 'mystery': return '？ボックス';
   }
   return '';
@@ -1447,8 +1449,8 @@ async function lose(cell) {
   const hint = state.hintCell
     ? `<div class="hint-line">💡 ヒント：先に <b>${describeCell(state.hintCell)}</b> を取ろう</div>`
     : '<div class="hint-line">💡 この流れからは勝てない…もっと前に戻るか、最初からやり直そう</div>';
-  const body = (cell.type === 'poison'
-    ? '毒で力尽きた…'
+  const body = (cell.type === 'bomb'
+    ? '爆弾の爆発で力尽きた…'
     : `あと <b class="need">${fmt(cell.value - state.power + 1)}</b> パワーで勝てた！`) + hint;
   showOverlay({
     title: 'おしい！',
@@ -1626,9 +1628,9 @@ function showGuides() {
   }
   const tips = {
     double: '✨ <b>×2</b> はパワーが2倍！ <b>大きくなってから</b>取るほどお得',
-    bomb: '💣 <b>爆弾</b>はパワーが半分になるけど、<b>つながった隣の敵をまとめて吹き飛ばして吸収</b>！ 強い敵のそばで使おう',
+    bomb: '💣 <b>爆弾</b>はパワーが減るけど、<b>つながった隣の敵をまとめて吹き飛ばして、そのパワーをもらえる</b>！ 弱いうちに取ると<b>力尽きる</b>ので注意',
     mystery: '❓ <b>？ボックス</b>は開けるまで中身が分からない！ ×2・パワー・金貨…でも爆弾かも？',
-    poison: '☠ <b>毒</b>はパワーが減る。弱いうちに取ると<b>力尽きる</b>ので注意！',
+    poison: '☠ <b>毒</b>はパワーが<b>半分</b>になる。<b>早めに</b>取れば被害が小さい！',
   };
   const fresh = Object.keys(tips).filter(type => !save.seen[type] && state.cells.some(c => c.type === type));
   if (fresh.length) {

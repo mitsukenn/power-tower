@@ -54,14 +54,14 @@ function applyCell(power, cell) {
     case 'monster': return cell.value < power ? power + cell.value : null;
     case 'potion': return power + cell.value;
     case 'double': return power * 2;
-    case 'bomb': return Math.max(1, Math.floor(power / 2));
-    case 'poison': return power - cell.value > 0 ? power - cell.value : null;
+    case 'bomb': return power - cell.value > 0 ? power - cell.value : null;   // 💣 −N（爆風で吸収する分は takeCell で足す）
+    case 'poison': return Math.max(1, Math.floor(power / 2));                // ☠ パワー半分
     case 'mystery':
       switch (cell.content) {
         case 'double': return power * 2;
         case 'plus': return power + Math.ceil(power * 0.4);
-        case 'bomb': return Math.max(1, Math.floor(power / 2));
-        case 'minus': return Math.max(1, power - Math.floor(power * 0.25));
+        case 'bomb': return Math.max(1, power - Math.floor(power * 0.25));   // 💣 −25%（＋爆風）
+        case 'minus': return Math.max(1, Math.floor(power / 2));            // ☠ パワー半分
       }
       return power;   // coin
   }
@@ -159,8 +159,8 @@ function buildLevel(lv, attempt, allBridges) {
       if (cand.length) kinds[cand[Math.floor(rnd() * cand.length)]] = kind;
     }
   };
-  placeIn('bomb', P.bombs, 1, Math.floor(total * 0.8), true);
-  placeIn('poison', P.poisons, Math.floor(total * 0.5), total - 2, true);
+  placeIn('poison', P.poisons, 1, Math.floor(total * 0.8), true);
+  placeIn('bomb', P.bombs, Math.floor(total * 0.5), total - 2, true);
   placeIn('mystery', P.mysteries, 1, total - 2, false);
   placeIn('double', P.doubles, Math.floor(total * 0.55), total - 2, false);
   placeIn('potion', Math.round(total * P.potionRate), 0, total - 2, false);
@@ -191,12 +191,13 @@ function buildLevel(lv, attempt, allBridges) {
       return cell;
     }
     if (kind === 'double') { p *= 2; return { type: 'double' }; }
-    if (kind === 'bomb') { p = Math.max(1, Math.floor(p / 2)); return { type: 'bomb' }; }
-    // 毒：開始時のパワーでは耐えられない量にして「先に取ると負け」のひっかけにする
-    const v = Math.max(start + 2, Math.round(p * between(rnd, CONFIG.poisonRatio)));
+    if (kind === 'poison') { p = Math.max(1, Math.floor(p / 2)); return { type: 'poison' }; }
+    // 💣：−N は開始時のパワーでは耐えられない量にして「先に取ると負け」のひっかけにする
+    //（正解の順番では爆風で吸収する分を数えないので、実際はもっと楽になる）
+    const v = Math.max(start + 2, Math.round(p * between(rnd, CONFIG.bombRatio)));
     if (v >= p) { const pv = Math.max(1, Math.round(p * 0.2)); p += pv; return { type: 'potion', value: pv }; }
     p -= v;
-    return { type: 'poison', value: v };
+    return { type: 'bomb', value: v };
   });
   const intended = p;
 
@@ -243,10 +244,10 @@ function bestPlan(cells, start, tries = 400, explored0 = null, edges = null) {
   const basePri = c => {
     if (c.type === 'mystery') return isHarmful(c) ? 0.5 : 3.5;
     switch (c.type) {
-      case 'bomb': return 0;
+      case 'poison': return 0;        // ☠ 半分は早いほど被害が小さい
       case 'monster': case 'potion': return 1;
       case 'double': return 4;
-      case 'poison': return 5;
+      case 'bomb': return 4.5;        // 💣 −N は強くなってから（爆風で巻き込めるなら下で優先する）
     }
     return 3;
   };
